@@ -21,6 +21,9 @@ from ryu.ofproto import ofproto_v1_5
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+from ryu.lib.packet import ipv4
+from ryu.lib.packet import arp
+
 
 confidence_list = {}
 default_confidence_value = 1
@@ -63,8 +66,11 @@ class SimpleSwitch15(app_manager.RyuApp):
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
 
+
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
+        global confidence_list
 
         msg = ev.msg
 
@@ -74,6 +80,8 @@ class SimpleSwitch15(app_manager.RyuApp):
         in_port = msg.match['in_port']
 
         pkt = packet.Packet(msg.data)
+        src_ip = self.find_src_ip_add(pkt)
+
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         print pkt
@@ -88,19 +96,12 @@ class SimpleSwitch15(app_manager.RyuApp):
         dpid = datapath.id
 
         #------------
-        global confidence_list
-        global default_confidence_value
-        print "------------------"
-        print src
-        print "------------------"
-        if src not in confidence_list:
-            confidence_list[src] = default_confidence_value
-
+        self.confidence_award(ev)
         # ------------
 
         self.mac_to_port.setdefault(dpid, {})
 
-        self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
+        self.logger.info("packet in %s ... %s %s %s %s", src_ip, dpid, src, dst, in_port)
 
         print "\n-----------------------------\n"
 
@@ -132,6 +133,29 @@ class SimpleSwitch15(app_manager.RyuApp):
         if not confidence_list:
             print "There are not any known requesters :( "
         else:
-            for src in confidence_list:
-                print ("Requester", src, " confidence value ", confidence_list[src])
+            for src_ip in confidence_list:
+                print ("Requester", src_ip, " confidence value ", confidence_list[src_ip])
 
+    def find_src_ip_add(self, pkt):
+        arp_pkt = pkt.get_protocol(arp.arp)
+        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+
+        if arp_pkt:
+            arp_src_ip = arp_pkt.src_ip
+            return arp_src_ip
+        elif ip_pkt:
+            ip_src_ip = ip_pkt.src
+            return ip_src_ip
+        else:
+            pass
+
+    def confidence_award(self, ev):
+        global confidence_list
+        global default_confidence_value
+
+        msg = ev.msg
+        pkt = packet.Packet(msg.data)
+        src_ip = self.find_src_ip_add(pkt)
+
+        if src_ip not in confidence_list:
+            confidence_list[src_ip] = default_confidence_value
