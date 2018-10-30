@@ -23,16 +23,17 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
-import threading
 import time
 
 incoming_packetin_list = {}
 confidence_list = {}
 default_confidence_value = 1
+time_slot = 1000
+min_confidence_value = (1,)
+max_confidence_value = (1,)
+
 
 class SimpleSwitch15(app_manager.RyuApp):
-
-
     OFP_VERSIONS = [ofproto_v1_5.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -68,8 +69,6 @@ class SimpleSwitch15(app_manager.RyuApp):
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
 
-
-
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         global confidence_list
@@ -87,8 +86,10 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
-        if src_ip is not None:
-            print pkt
+        if src_ip is None:
+            return
+
+        print pkt
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
@@ -98,7 +99,7 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         dpid = datapath.id
 
-        #------------
+        # ------------
         self.confidence_award(ev)
         # ------------
 
@@ -139,12 +140,11 @@ class SimpleSwitch15(app_manager.RyuApp):
             for src_ip in confidence_list:
                 print ("Requester", src_ip, " confidence value ", confidence_list[src_ip])
 
-        if not incoming_packetin_list:
-            print "There are not any stored incoming time for packets"
-        else:
-            for arrival_time in incoming_packetin_list:
-                print arrival_time, " : ", incoming_packetin_list[arrival_time]
-
+        # if not incoming_packetin_list:
+        #     print "There are not any stored incoming time for packets"
+        #  else:
+        #     for arrival_time in incoming_packetin_list:
+        #         print arrival_time, " : ", incoming_packetin_list[arrival_time]
 
     def find_src_ip_add(self, pkt):
         arp_pkt = pkt.get_protocol(arp.arp)
@@ -173,22 +173,58 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         arrival_time = int(round(time.time() * 1000))
 
-        #store arrival time and source IP add
+        # store arrival time and source IP add
         if arrival_time not in incoming_packetin_list:
             incoming_packetin_list[arrival_time] = [src_ip]
         else:
             incoming_packetin_list[arrival_time].append(src_ip)
 
-
         if src_ip not in confidence_list:
             confidence_list[src_ip] = default_confidence_value
+            self.update_min_max_confidence_value(src_ip, default_confidence_value)
         else:
             packet_ratio = self.count_ratio(arrival_time, src_ip)
-            confidence_list[src_ip] = 5
+            confidence_list[src_ip] = packet_ratio
+            self.update_min_max_confidence_value(src_ip, packet_ratio)
+
 
     def count_ratio(self, arrival_time, src_ip):
         global incoming_packetin_list
+        global time_slot
+        packet_count_in_timeslot = 0
+        count_of_src_ip_in_timeslot = 0
 
         for key in incoming_packetin_list:
-        #TODO
-        return 1
+            #print "*************************"
+            #print "Key          ", key
+            #print "Arrival time ", arrival_time
+            #print "Rozdiel      ", arrival_time - time_slot
+
+            if (key > (arrival_time - time_slot)) and key < arrival_time:
+                packet_count_in_timeslot = packet_count_in_timeslot + 1
+
+                #TODO pridat ked bude viacej zaznamov src_ip v jednom case
+
+                if src_ip in incoming_packetin_list[key]:
+                    count_of_src_ip_in_timeslot = count_of_src_ip_in_timeslot + 1
+
+        print "Count of SRC IP ", count_of_src_ip_in_timeslot
+        print "Count of ALL ", packet_count_in_timeslot
+        return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
+
+    def update_min_max_confidence_value(self, src_ip, new_value):
+        global min_confidence_value
+        global max_confidence_value
+
+        if not min_confidence_value[1] and not max_confidence_value[1]:
+            min_confidence_value = (new_value, src_ip)
+            max_confidence_value = (new_value, src_ip)
+
+        elif min_confidence_value[0] > new_value or min_confidence_value[1] == src_ip:
+            min_confidence_value = (new_value, src_ip)
+
+        elif max_confidence_value[0] < new_value or max_confidence_value[1] == src_ip:
+            max_confidence_value = (new_value, src_ip)
+
+    #TODO apply update_min_max_confidence_value to code :)
+    #TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
