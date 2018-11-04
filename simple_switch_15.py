@@ -12,7 +12,7 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from PyQt5.QtCore.QByteArray import length
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -25,20 +25,30 @@ from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
 import time
 
+# Global variables
 incoming_packetin_list = {}
 confidence_list = {}
 default_confidence_value = 1
 time_slot = 1000
 min_confidence_value = (1,)
 max_confidence_value = (1,)
+number_of_queues = 3
+total_buffers_length = 300
+priority_buffer = []
 
+# TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
 
 class SimpleSwitch15(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_5.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
+        global number_of_queues
+
         super(SimpleSwitch15, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
+
+        for i in range(1, number_of_queues + 1):
+            self.priority_buffer[i] = []
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -134,30 +144,19 @@ class SimpleSwitch15(app_manager.RyuApp):
                                   match=match, actions=actions, data=data)
         datapath.send_msg(out)
 
+        # TOBEDELETED Check print
         if not confidence_list:
             print "There are not any known requesters :( "
         else:
             for src_ip in confidence_list:
                 print ("Requester", src_ip, " confidence value ", confidence_list[src_ip])
 
+        # TOBEDELETED Check print
         # if not incoming_packetin_list:
         #     print "There are not any stored incoming time for packets"
         #  else:
         #     for arrival_time in incoming_packetin_list:
         #         print arrival_time, " : ", incoming_packetin_list[arrival_time]
-
-    def find_src_ip_add(self, pkt):
-        arp_pkt = pkt.get_protocol(arp.arp)
-        ip_pkt = pkt.get_protocol(ipv4.ipv4)
-
-        if arp_pkt:
-            arp_src_ip = arp_pkt.src_ip
-            return arp_src_ip
-        elif ip_pkt:
-            ip_src_ip = ip_pkt.src
-            return ip_src_ip
-        else:
-            pass
 
     def confidence_award(self, ev):
         global confidence_list
@@ -187,6 +186,40 @@ class SimpleSwitch15(app_manager.RyuApp):
             confidence_list[src_ip] = packet_ratio
             self.update_min_max_confidence_value(src_ip, packet_ratio)
 
+        self.sorting_to_queues(ev)
+
+    def sorting_to_queues(self, ev):
+        global priority_buffer
+
+        msg = ev.msg
+        pkt = packet.Packet(msg.data)
+        src_ip = self.find_src_ip_add(pkt)
+
+        index_to_buffer = round(((confidence_list[src_ip] - min_confidence_value) / (max_confidence_value - min_confidence_value)) * number_of_queues)
+
+        if length(priority_buffer) < total_buffers_length:
+            priority_buffer[index_to_buffer].append(ev)
+        elif index_to_buffer == 1:
+            return
+        else:
+            for i in range(1, index_to_buffer):
+                if length(priority_buffer[i]) > 0:
+                    #TODO Add reject request from the tail of this buffer
+                    priority_buffer[index_to_buffer].append(ev)
+                    return
+
+    def find_src_ip_add(self, pkt):
+        arp_pkt = pkt.get_protocol(arp.arp)
+        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+
+        if arp_pkt:
+            arp_src_ip = arp_pkt.src_ip
+            return arp_src_ip
+        elif ip_pkt:
+            ip_src_ip = ip_pkt.src
+            return ip_src_ip
+        else:
+            pass
 
     def count_ratio(self, arrival_time, src_ip):
         global incoming_packetin_list
@@ -195,15 +228,15 @@ class SimpleSwitch15(app_manager.RyuApp):
         count_of_src_ip_in_timeslot = 0
 
         for key in incoming_packetin_list:
-            #print "*************************"
-            #print "Key          ", key
-            #print "Arrival time ", arrival_time
-            #print "Rozdiel      ", arrival_time - time_slot
+            # print "*************************"
+            # print "Key          ", key
+            # print "Arrival time ", arrival_time
+            # print "Rozdiel      ", arrival_time - time_slot
 
             if (key > (arrival_time - time_slot)) and key < arrival_time:
                 packet_count_in_timeslot = packet_count_in_timeslot + 1
 
-                #TODO pridat ked bude viacej zaznamov src_ip v jednom case
+                # TODO pridat ked bude viacej zaznamov src_ip v jednom case
 
                 if src_ip in incoming_packetin_list[key]:
                     count_of_src_ip_in_timeslot = count_of_src_ip_in_timeslot + 1
@@ -226,5 +259,5 @@ class SimpleSwitch15(app_manager.RyuApp):
         elif max_confidence_value[0] < new_value or max_confidence_value[1] == src_ip:
             max_confidence_value = (new_value, src_ip)
 
-    #TODO apply update_min_max_confidence_value to code :)
-    #TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
+    # TODO apply update_min_max_confidence_value to code :)
+    # TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
