@@ -215,6 +215,7 @@ class SimpleSwitch15(app_manager.RyuApp):
         print index_to_buffer
         print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
 
+
         if len(priority_buffer) < total_buffers_length:
             priority_buffer[index_to_buffer].append(msg)
             # TODO DELETE THESE PRINTS
@@ -222,12 +223,14 @@ class SimpleSwitch15(app_manager.RyuApp):
                 print priority_buffer[i]
             print "***********************************************************"
         elif index_to_buffer == 1:
+            # TODO update list of rejected packets
             # TODO DELETE THESE PRINTS
             print "Neulozil som tento packet, lebo mal index 1"
             return
         else:
             for i in range(1, index_to_buffer):
                 if len(priority_buffer[i]) > 0:
+                    # TODO update list of rejected packets
                     priority_buffer[i].pop(len(priority_buffer[i]) - 1)
                     priority_buffer[index_to_buffer].append(msg)
                     # TODO DELETE THESE PRINTS
