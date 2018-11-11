@@ -12,7 +12,7 @@
 # implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from PyQt5.QtCore.QByteArray import length
+
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -25,6 +25,7 @@ from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
 import time
 
+
 # Global variables
 incoming_packetin_list = {}
 confidence_list = {}
@@ -34,7 +35,7 @@ min_confidence_value = (1,)
 max_confidence_value = (1,)
 number_of_queues = 3
 total_buffers_length = 300
-priority_buffer = []
+priority_buffer = {}
 
 # TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
 
@@ -43,12 +44,13 @@ class SimpleSwitch15(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         global number_of_queues
+        global priority_buffer
 
         super(SimpleSwitch15, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
         for i in range(1, number_of_queues + 1):
-            self.priority_buffer[i] = []
+            priority_buffer[i] = []
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -182,7 +184,10 @@ class SimpleSwitch15(app_manager.RyuApp):
             confidence_list[src_ip] = default_confidence_value
             self.update_min_max_confidence_value(src_ip, default_confidence_value)
         else:
+            #TODO prepracovat tuto logiku tu :(
             packet_ratio = self.count_ratio(arrival_time, src_ip)
+            print "PACKET RATIO IS"
+            print packet_ratio
             confidence_list[src_ip] = packet_ratio
             self.update_min_max_confidence_value(src_ip, packet_ratio)
 
@@ -195,17 +200,40 @@ class SimpleSwitch15(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
 
-        index_to_buffer = round(((confidence_list[src_ip] - min_confidence_value) / (max_confidence_value - min_confidence_value)) * number_of_queues)
+        if max_confidence_value[0] - min_confidence_value[0] == 0 or confidence_list[src_ip] - min_confidence_value[0] == 0:
+            index_to_buffer = number_of_queues
+        else:
+            index_to_buffer = int(round(((float(confidence_list[src_ip]) - float(min_confidence_value[0])) / (float(max_confidence_value[0]) - float(min_confidence_value[0]))) * float(number_of_queues)))
 
-        if length(priority_buffer) < total_buffers_length:
-            priority_buffer[index_to_buffer].append(ev)
+        print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
+        print "CONFIDENCE VALUE"
+        print confidence_list[src_ip]
+        print min_confidence_value[0]
+        print max_confidence_value[0]
+        print number_of_queues
+        print "INDEX TO BUFFER IS ...."
+        print index_to_buffer
+        print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
+
+        if len(priority_buffer) < total_buffers_length:
+            priority_buffer[index_to_buffer].append(msg)
+            # TODO DELETE THESE PRINTS
+            for i in range(1, number_of_queues+1):
+                print priority_buffer[i]
+            print "***********************************************************"
         elif index_to_buffer == 1:
+            # TODO DELETE THESE PRINTS
+            print "Neulozil som tento packet, lebo mal index 1"
             return
         else:
             for i in range(1, index_to_buffer):
-                if length(priority_buffer[i]) > 0:
-                    #TODO Add reject request from the tail of this buffer
-                    priority_buffer[index_to_buffer].append(ev)
+                if len(priority_buffer[i]) > 0:
+                    priority_buffer[i].pop(len(priority_buffer[i]) - 1)
+                    priority_buffer[index_to_buffer].append(msg)
+                    # TODO DELETE THESE PRINTS
+                    for k in range(1, number_of_queues+1):
+                        print priority_buffer[k]
+                    print "***********************************************************"
                     return
 
     def find_src_ip_add(self, pkt):
@@ -243,15 +271,19 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         print "Count of SRC IP ", count_of_src_ip_in_timeslot
         print "Count of ALL ", packet_count_in_timeslot
-        return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
+        # return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
+        return float(1 - float(count_of_src_ip_in_timeslot) / float(packet_count_in_timeslot))
 
     def update_min_max_confidence_value(self, src_ip, new_value):
         global min_confidence_value
         global max_confidence_value
 
-        if not min_confidence_value[1] and not max_confidence_value[1]:
+        if len(min_confidence_value) == 1 and len(max_confidence_value) == 1:
             min_confidence_value = (new_value, src_ip)
             max_confidence_value = (new_value, src_ip)
+            print ">>>>>>>>>MIN CONFIDENCE VALUE>>>>>>>>>>>"
+            print min_confidence_value
+            print ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 
         elif min_confidence_value[0] > new_value or min_confidence_value[1] == src_ip:
             min_confidence_value = (new_value, src_ip)
