@@ -24,6 +24,7 @@ from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
 import time
+import thread
 
 
 # Global variables
@@ -36,6 +37,7 @@ max_confidence_value = (1,)
 number_of_queues = 3
 total_buffers_length = 300
 priority_buffer = {}
+beta = 2
 
 # TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
 
@@ -51,6 +53,12 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         for i in range(1, number_of_queues + 1):
             priority_buffer[i] = []
+
+        try:
+            thread.start_new_thread(self.serving_requests)
+            #return
+        except:
+            print "Error: unable to start thread"
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -88,11 +96,6 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         msg = ev.msg
 
-        datapath = msg.datapath
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        in_port = msg.match['in_port']
-
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
 
@@ -101,19 +104,34 @@ class SimpleSwitch15(app_manager.RyuApp):
         if src_ip is None:
             return
 
-        print pkt
+        #print pkt
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
+
+        # ------------
+        self.confidence_award(ev)
+        # ------------
+
+    def create_flow(self, msg):
+
+        datapath = msg.datapath
+
+        pkt = packet.Packet(msg.data)
+        src_ip = self.find_src_ip_add(pkt)
+        eth = pkt.get_protocols(ethernet.ethernet)[0]
+
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match['in_port']
+
+
         dst = eth.dst
         src = eth.src
 
         dpid = datapath.id
 
-        # ------------
-        self.confidence_award(ev)
-        # ------------
 
         self.mac_to_port.setdefault(dpid, {})
 
@@ -195,6 +213,7 @@ class SimpleSwitch15(app_manager.RyuApp):
 
     def sorting_to_queues(self, ev):
         global priority_buffer
+        actual_total_buffer_length = 0
 
         msg = ev.msg
         pkt = packet.Packet(msg.data)
@@ -216,7 +235,10 @@ class SimpleSwitch15(app_manager.RyuApp):
         print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
 
 
-        if len(priority_buffer) < total_buffers_length:
+        for i in range(1, number_of_queues +1):
+            actual_total_buffer_length = len(priority_buffer[i])
+
+        if actual_total_buffer_length < total_buffers_length:
             priority_buffer[index_to_buffer].append(msg)
             # TODO DELETE THESE PRINTS
             for i in range(1, number_of_queues+1):
@@ -231,13 +253,48 @@ class SimpleSwitch15(app_manager.RyuApp):
             for i in range(1, index_to_buffer):
                 if len(priority_buffer[i]) > 0:
                     # TODO update list of rejected packets
-                    priority_buffer[i].pop(len(priority_buffer[i]) - 1)
+                    priority_buffer[i].pop()
                     priority_buffer[index_to_buffer].append(msg)
                     # TODO DELETE THESE PRINTS
                     for k in range(1, number_of_queues+1):
                         print priority_buffer[k]
                     print "***********************************************************"
                     return
+
+    def serving_requests (self):
+        # TODO Serving requet thread
+        global number_of_queues
+        global priority_buffer
+        global beta
+        actual_total_buffer_length = 0
+
+        # weight = []
+        #weight.append(1)
+        #print weight
+
+        while True:
+            for i in range(1, number_of_queues + 1):
+                actual_total_buffer_length = len(priority_buffer[i])
+
+            if actual_total_buffer_length != 0:
+                weight = [0,]
+                #print "> > > Thread serving requests"
+
+                for i in range(1, number_of_queues + 1):
+                    weight.append(int(round((len(priority_buffer[i])/max(len(priority_buffer[1]), 1)) * (beta**(i-1)))))
+
+                for i in range(1, number_of_queues + 1):
+                    if weight[i] < len(priority_buffer[i]):
+                        # TODO pop.ni packet-iny z buffra
+                        for j in range(0, weight[i]):
+                            self.create_flow(priority_buffer[i].pop(0))
+                    else:
+                        # TODO pop.ni packet-iny z buffra
+                        buffer_length = len(priority_buffer[i])
+                        for j in range(0, buffer_length):
+                            self.create_flow(priority_buffer[i].pop(0))
+            else:
+                time.sleep(0.000001)
 
     def find_src_ip_add(self, pkt):
         arp_pkt = pkt.get_protocol(arp.arp)
