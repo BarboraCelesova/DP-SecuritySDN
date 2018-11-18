@@ -22,6 +22,8 @@ class Topology(Topo):
         s2 = self.addSwitch('s2')
         s3 = self.addSwitch('s3')
 
+        #TODO set parameter bandwidth for links
+
         # Add links
         self.addLink(h1, s1)
         self.addLink(h2, s1)
