@@ -32,7 +32,7 @@ import threading
 incoming_packetin_list = {}
 confidence_list = {}
 default_confidence_value = 1
-time_slot = 5000
+time_slot = 1000
 min_confidence_value = (1,)
 max_confidence_value = (1,)
 number_of_queues = 3
@@ -48,8 +48,6 @@ sem_priority_buffer = threading.Semaphore()
 
 # TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
 
-
-# TODO try to change timeslot
 class SimpleSwitch15(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_5.OFP_VERSION]
 
@@ -113,6 +111,7 @@ class SimpleSwitch15(app_manager.RyuApp):
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         if src_ip is None:
+            self.create_flow(msg)
             return
 
         #print pkt
@@ -120,6 +119,14 @@ class SimpleSwitch15(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
+
+        dst = eth.dst
+        src = eth.src
+        in_port = msg.match['in_port']
+
+
+        print " Prisiel packetin "
+        self.logger.info("packet in %s ... %s %s %s %s", src_ip, msg.datapath.id, src, dst, in_port)
 
         # ------------
         self.confidence_award(ev)
@@ -137,18 +144,11 @@ class SimpleSwitch15(app_manager.RyuApp):
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
 
-
         dst = eth.dst
         src = eth.src
 
         dpid = datapath.id
-
-
         self.mac_to_port.setdefault(dpid, {})
-
-        self.logger.info("packet in %s ... %s %s %s %s", src_ip, dpid, src, dst, in_port)
-
-        print "\n-----------------------------\n"
 
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
@@ -157,6 +157,8 @@ class SimpleSwitch15(app_manager.RyuApp):
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
+            print " Robim flooding"
+            self.logger.info("packet in %s ... %s %s %s %s", src_ip, dpid, src, dst, in_port)
 
         actions = [parser.OFPActionOutput(out_port)]
 
@@ -164,6 +166,8 @@ class SimpleSwitch15(app_manager.RyuApp):
         if out_port != ofproto.OFPP_FLOOD:
             match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
             self.add_flow(datapath, 1, match, actions)
+            print " Vytvoreny flow"
+            self.logger.info("packet in %s ... %s %s %s %s", src_ip, dpid, src, dst, in_port)
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -176,11 +180,11 @@ class SimpleSwitch15(app_manager.RyuApp):
         datapath.send_msg(out)
 
         # TOBEDELETED Check print
-        if not confidence_list:
-            print "There are not any known requesters :( "
-        else:
-            for src_ip in confidence_list:
-                print ("Requester", src_ip, " confidence value ", confidence_list[src_ip])
+        # if not confidence_list:
+        #     print "There are not any known requesters :( "
+        # else:
+        #     for src_ip in confidence_list:
+        #         print ("Requester", src_ip, " confidence value ", confidence_list[src_ip])
 
         # TOBEDELETED Check print
         # if not incoming_packetin_list:
@@ -219,8 +223,8 @@ class SimpleSwitch15(app_manager.RyuApp):
         else:
             #TODO prepracovat tuto logiku tu :(
             packet_ratio = self.count_ratio(arrival_time, src_ip)
-            print "PACKET RATIO IS"
-            print packet_ratio
+            # print "PACKET RATIO IS"
+            # print packet_ratio
             confidence_list[src_ip] = packet_ratio
             self.update_min_max_confidence_value(src_ip, packet_ratio)
 
@@ -241,42 +245,35 @@ class SimpleSwitch15(app_manager.RyuApp):
             if index_to_buffer == 0:
                 index_to_buffer = 1
 
-        print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
-        print "CONFIDENCE VALUE"
-        print confidence_list[src_ip]
-        print min_confidence_value[0]
-        print max_confidence_value[0]
-        print number_of_queues
-        print "INDEX TO BUFFER IS ...."
-        print index_to_buffer
-        print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
+        # print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
+        # print "CONFIDENCE VALUE"
+        # print confidence_list[src_ip]
+        # print min_confidence_value[0]
+        # print max_confidence_value[0]
+        # print number_of_queues
+        # print "INDEX TO BUFFER IS ...."
+        # print index_to_buffer
+        # print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
 
         sem_priority_buffer.acquire()
-        for i in range(1, number_of_queues +1):
+        for i in range(1, number_of_queues + 1):
             actual_total_buffer_length = len(priority_buffer[i])
 
         if actual_total_buffer_length < total_buffers_length:
             priority_buffer[index_to_buffer].append(msg)
-            # TODO DELETE THESE PRINTS
-            # for i in range(1, number_of_queues+1):
-            #     print priority_buffer[i]
-            # print "***********************************************************"
         elif index_to_buffer == 1:
             # TODO update list of rejected packets
             # TODO DELETE THESE PRINTS
             print "Neulozil som tento packet, lebo mal index 1"
-            return
         else:
             for i in range(1, index_to_buffer):
                 if len(priority_buffer[i]) > 0:
+                    print "!!REJECTED!!"
+                    print priority_buffer[i]
                     # TODO update list of rejected packets
                     priority_buffer[i].pop()
                     priority_buffer[index_to_buffer].append(msg)
-                    # TODO DELETE THESE PRINTS
-                    # for k in range(1, number_of_queues+1):
-                    #     print priority_buffer[k]
-                    print "***********************************************************"
-                    return
+                    break
         sem_priority_buffer.release()
 
 
@@ -287,49 +284,42 @@ class SimpleSwitch15(app_manager.RyuApp):
         actual_total_buffer_length = 0
 
         while True:
+            actual_buffer_length = [0]
             sem_priority_buffer.acquire()
             for i in range(1, number_of_queues + 1):
                 actual_total_buffer_length = len(priority_buffer[i])
 
             if actual_total_buffer_length != 0:
                 weight = [0, ]
-                print "> > > Thread serving requests"
-
-                #TODO Save lengths of queues before
-                #TODO Change counting from the higher priority queue to the less
 
                 # count weights
                 for i in range(1, number_of_queues):
                     weight.append(int(round((len(priority_buffer[i]) / max(len(priority_buffer[1]), 1)) * (beta ** (i - 1)))))
+
+                for i in range(1, number_of_queues + 1):
+                    actual_buffer_length.append(len(priority_buffer[i]))
                 sem_priority_buffer.release()
 
                 #serve request from the buffer with the highest priority
-                buffer_length = len(priority_buffer[number_of_queues])
+                buffer_length = actual_buffer_length[number_of_queues]
                 if buffer_length != 0:
                     for j in range(0, buffer_length):
-                        print "[Z najprioritnejsieho radu vyberam]"
-                        print priority_buffer[number_of_queues][0]
                         self.create_flow(priority_buffer[number_of_queues].pop(0))
 
-                     #serve stored requests
-                #for i in range(number_of_queues - 1, 0):
-                for i in range(1, number_of_queues):
-                    if weight[i] < len(priority_buffer[i]):
+                #serve stored requests
+                for i in range(number_of_queues - 1, 0, -1):
+                    if weight[i] < actual_buffer_length[i]:
                         for j in range(0, weight[i]):
-                            print "[Z radu vyberam]"
-                            print priority_buffer[i][0]
                             self.create_flow(priority_buffer[i].pop(0))
                     else:
-                        buffer_length = len(priority_buffer[i])
+                        buffer_length = actual_buffer_length[i]
                         for j in range(0, buffer_length):
-                            print "[Z radu vyberam]"
-                            print priority_buffer[i][0]
                             self.create_flow(priority_buffer[i].pop(0))
-
+                time.sleep(0.00001)
 
             else:
                 sem_priority_buffer.release()
-                time.sleep(0.000001)
+                time.sleep(0.00001)
 
     def find_src_ip_add(self, pkt):
         arp_pkt = pkt.get_protocol(arp.arp)
@@ -366,8 +356,8 @@ class SimpleSwitch15(app_manager.RyuApp):
                     count_of_src_ip_in_timeslot = count_of_src_ip_in_timeslot + 1
         sem_incoming_packetin_list.release()
 
-        print "Count of SRC IP ", count_of_src_ip_in_timeslot
-        print "Count of ALL ", packet_count_in_timeslot
+        # print "Count of SRC IP ", count_of_src_ip_in_timeslot
+        # print "Count of ALL ", packet_count_in_timeslot
         # return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
         return float(1 - float(count_of_src_ip_in_timeslot) / float(packet_count_in_timeslot))
 
