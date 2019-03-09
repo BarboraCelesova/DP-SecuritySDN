@@ -40,9 +40,12 @@ number_of_queues = 3
 total_buffers_length = 300
 priority_buffer = {}
 beta = 2
+packet_in_counters_list = {}
 
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
+sem_packet_in_counters_list = threading.Semaphore()
+
 #TODO apply these semaphores
 #sem_confidence_list = threading.Semaphore()
 #sem_max_min_confidence_value = threading.Semaphore()
@@ -67,6 +70,7 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         try:
             thread.start_new_thread(self.serving_requests)
+            thread.start_new_thread(self.time_slot)
             #return
         except:
             print "Error: unable to start thread"
@@ -249,8 +253,10 @@ class SimpleSwitch15(app_manager.RyuApp):
             return
 
         arrival_time = int(round(time.time() * 1000))
+        self.update_packet_in_counter_list(src_ip)
 
         # store arrival time and source IP add
+        # TODO export incoming_packet_list every 10 seconds and clean it
         if arrival_time not in incoming_packetin_list:
             sem_incoming_packetin_list.acquire()
             incoming_packetin_list[arrival_time] = [src_ip]
@@ -263,12 +269,29 @@ class SimpleSwitch15(app_manager.RyuApp):
         if src_ip not in confidence_list:
             confidence_list[src_ip] = default_confidence_value
             self.update_min_max_confidence_value(src_ip, default_confidence_value)
-        else:
-            #TODO prepracovat tuto logiku tu :(
-            packet_ratio = self.count_ratio(arrival_time, src_ip)
-            # print "PACKET RATIO IS"
-            # print packet_ratio
-            confidence_list[src_ip] = packet_ratio
+        else: #TODO prepracovat tuto logiku tu :'(
+            # TODO if total request from sender in this time slot is more than threashold for him
+                #reject this request
+                #give him worse confidence value
+                #break function
+            # TODO else
+                #TODO if controller is not under attack
+                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
+                #TODO else
+                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
+            # TODO if #confidence_list[src_ip] < Threshold for malicious user
+                    # add user to blacklist
+                    # notice switches about this user
+
+            # TODO Delete this
+            #packet_ratio = self.count_ratio(arrival_time, src_ip)
+                # print "PACKET RATIO IS"
+                # print packet_ratio
+            #confidence_list[src_ip] = packet_ratio
+
+            #TODO delete this just a try
+            packet_ratio = 0.9
+            confidence_list[src_ip] = 0.9
             self.update_min_max_confidence_value(src_ip, packet_ratio)
 
         self.sorting_to_queues(ev)
@@ -423,3 +446,34 @@ class SimpleSwitch15(app_manager.RyuApp):
 
     # TODO apply update_min_max_confidence_value to code :)
     # TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
+
+    def update_packet_in_counter_list(self, src_ip):
+        global packet_in_counters_list
+
+        if src_ip not in packet_in_counters_list:
+            sem_packet_in_counters_list.acquire()
+            packet_in_counters_list[src_ip] = 1
+            sem_packet_in_counters_list.release()
+        else:
+            sem_packet_in_counters_list.acquire()
+            packet_in_counters_list[src_ip] += 1
+            sem_packet_in_counters_list.release()
+
+
+    def time_slot(self):
+        global packet_in_counters_list
+
+        while True:
+            for src_ip in packet_in_counters_list:
+                print src_ip, packet_in_counters_list[src_ip]
+
+
+            summary = 0
+            for x in packet_in_counters_list:
+                summary += packet_in_counters_list[x]
+
+            print("--- %s", summary)
+            sem_packet_in_counters_list.acquire()
+            packet_in_counters_list = {}
+            sem_packet_in_counters_list.release()
+            time.sleep(1)
