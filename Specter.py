@@ -40,14 +40,23 @@ number_of_queues = 3
 total_buffers_length = 300
 priority_buffer = {}
 beta = 2
+alpha = 0.9
 packet_in_counters_list = {}
+total_count_per_timeslot = 0
+threshold_user = {}
+threshold_malicious_user = 0
 
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
 sem_packet_in_counters_list = threading.Semaphore()
+sem_total_count_per_timeslot = threading.Semaphore()
+
+#TODO 2
+sem_threshold_user = threading.Semaphore()
+sem_threshold_malicious_user = threading.Semaphore
 
 #TODO apply these semaphores
-#sem_confidence_list = threading.Semaphore()
+sem_confidence_list = threading.Semaphore()
 #sem_max_min_confidence_value = threading.Semaphore()
 
 # TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
@@ -155,6 +164,7 @@ class SimpleSwitch15(app_manager.RyuApp):
 
         # v 1.0
         self.logger.info("packet in %s ... %s %s %s %s", src_ip, msg.datapath.id, src, dst, msg.in_port)
+
         # ------------
         self.confidence_award(ev)
         # ------------
@@ -244,6 +254,8 @@ class SimpleSwitch15(app_manager.RyuApp):
         global confidence_list
         global default_confidence_value
         global incoming_packetin_list
+        global total_count_per_timeslot
+        global packet_in_counters_list
 
         msg = ev.msg
         pkt = packet.Packet(msg.data)
@@ -253,6 +265,7 @@ class SimpleSwitch15(app_manager.RyuApp):
             return
 
         arrival_time = int(round(time.time() * 1000))
+
         self.update_packet_in_counter_list(src_ip)
 
         # store arrival time and source IP add
@@ -269,32 +282,45 @@ class SimpleSwitch15(app_manager.RyuApp):
         if src_ip not in confidence_list:
             confidence_list[src_ip] = default_confidence_value
             self.update_min_max_confidence_value(src_ip, default_confidence_value)
-        else: #TODO prepracovat tuto logiku tu :'(
+        else:
             # TODO if total request from sender in this time slot is more than threashold for him
+            if packet_in_counters_list[src_ip] > threshold_user[src_ip]:
+                # give him worse confidence value
+                sem_confidence_list.acquire()
+                confidence_list[src_ip] = alpha * confidence_list[src_ip] - 1
+                sem_confidence_list.release()
                 #reject this request
-                #give him worse confidence value
-                #break function
-            # TODO else
+                self.blacklist_user(src_ip)
+                # break function
+                return
+            # else
                 #TODO if controller is not under attack
+                    #sem_confidence_list.acquire()
                     #confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
+                    #sem_confidence_list.release()
                 #TODO else
-                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
-            # TODO if #confidence_list[src_ip] < Threshold for malicious user
-                    # add user to blacklist
-                    # notice switches about this user
+                    #sem_confidence_list.acquire()
+                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] - 1
+                    # sem_confidence_list.release()
 
-            # TODO Delete this
-            #packet_ratio = self.count_ratio(arrival_time, src_ip)
-                # print "PACKET RATIO IS"
-                # print packet_ratio
-            #confidence_list[src_ip] = packet_ratio
+            self.blacklist_user(src_ip)
 
-            #TODO delete this just a try
+            # TODO Apply update_min_max_confidence_value after each change of CF
+
+            #TODO  TOBEDELETED delete this just a try
             packet_ratio = 0.9
             confidence_list[src_ip] = 0.9
             self.update_min_max_confidence_value(src_ip, packet_ratio)
 
         self.sorting_to_queues(ev)
+
+    def blacklist_user(self, src_ip):
+        global confidence_list
+        global threshold_malicious_user
+
+        # #TODO 2
+        # if confidence_list[src_ip] < threshold_malicious_user:
+        #     #TODO
 
     def sorting_to_queues(self, ev):
         global priority_buffer
@@ -311,6 +337,7 @@ class SimpleSwitch15(app_manager.RyuApp):
             if index_to_buffer == 0:
                 index_to_buffer = 1
 
+        #TOBEDELETED
         # print "<<<<<<<<<<<<<<>>>>>>>>>>>>>>"
         # print "CONFIDENCE VALUE"
         # print confidence_list[src_ip]
@@ -341,7 +368,6 @@ class SimpleSwitch15(app_manager.RyuApp):
                     priority_buffer[index_to_buffer].append(msg)
                     break
         sem_priority_buffer.release()
-
 
     def serving_requests(self):
         global number_of_queues
@@ -400,32 +426,34 @@ class SimpleSwitch15(app_manager.RyuApp):
         else:
             pass
 
-    def count_ratio(self, arrival_time, src_ip):
-        global incoming_packetin_list
-        global time_slot
-        packet_count_in_timeslot = 0
-        count_of_src_ip_in_timeslot = 0
+    # TODO TOBEDELETED COUNT RATIO FUNCTION
 
-        sem_incoming_packetin_list.acquire()
-        for key in incoming_packetin_list:
-            # print "*************************"
-            # print "Key          ", key
-            # print "Arrival time ", arrival_time
-            # print "Rozdiel      ", arrival_time - time_slot
-
-            if (key >= (arrival_time - time_slot)) and key <= arrival_time:
-                packet_count_in_timeslot = packet_count_in_timeslot + 1
-
-                # TODO pridat ked bude viacej zaznamov src_ip v jednom case
-
-                if src_ip in incoming_packetin_list[key]:
-                    count_of_src_ip_in_timeslot = count_of_src_ip_in_timeslot + 1
-        sem_incoming_packetin_list.release()
-
-        # print "Count of SRC IP ", count_of_src_ip_in_timeslot
-        # print "Count of ALL ", packet_count_in_timeslot
-        # return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
-        return float(1 - float(count_of_src_ip_in_timeslot) / float(packet_count_in_timeslot))
+    # def count_ratio(self, arrival_time, src_ip):
+    #     global incoming_packetin_list
+    #     global time_slot
+    #     packet_count_in_timeslot = 0
+    #     count_of_src_ip_in_timeslot = 0
+    #
+    #     sem_incoming_packetin_list.acquire()
+    #     for key in incoming_packetin_list:
+    #         # print "*************************"
+    #         # print "Key          ", key
+    #         # print "Arrival time ", arrival_time
+    #         # print "Rozdiel      ", arrival_time - time_slot
+    #
+    #         if (key >= (arrival_time - time_slot)) and key <= arrival_time:
+    #             packet_count_in_timeslot = packet_count_in_timeslot + 1
+    #
+    #             # TODO pridat ked bude viacej zaznamov src_ip v jednom case
+    #
+    #             if src_ip in incoming_packetin_list[key]:
+    #                 count_of_src_ip_in_timeslot = count_of_src_ip_in_timeslot + 1
+    #     sem_incoming_packetin_list.release()
+    #
+    #     # print "Count of SRC IP ", count_of_src_ip_in_timeslot
+    #     # print "Count of ALL ", packet_count_in_timeslot
+    #     # return str(count_of_src_ip_in_timeslot) + " / " + str(packet_count_in_timeslot)
+    #     return float(1 - float(count_of_src_ip_in_timeslot) / float(packet_count_in_timeslot))
 
     def update_min_max_confidence_value(self, src_ip, new_value):
         global min_confidence_value
@@ -434,9 +462,10 @@ class SimpleSwitch15(app_manager.RyuApp):
         if len(min_confidence_value) == 1 and len(max_confidence_value) == 1:
             min_confidence_value = (new_value, src_ip)
             max_confidence_value = (new_value, src_ip)
-            print ">>>>>>>>>MIN CONFIDENCE VALUE>>>>>>>>>>>"
-            print min_confidence_value
-            print ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+            # TOBEDELETED
+            # print ">>>>>>>>>MIN CONFIDENCE VALUE>>>>>>>>>>>"
+            # print min_confidence_value
+            # print ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 
         elif min_confidence_value[0] > new_value or min_confidence_value[1] == src_ip:
             min_confidence_value = (new_value, src_ip)
@@ -449,6 +478,7 @@ class SimpleSwitch15(app_manager.RyuApp):
 
     def update_packet_in_counter_list(self, src_ip):
         global packet_in_counters_list
+        global total_count_per_timeslot
 
         if src_ip not in packet_in_counters_list:
             sem_packet_in_counters_list.acquire()
@@ -459,21 +489,34 @@ class SimpleSwitch15(app_manager.RyuApp):
             packet_in_counters_list[src_ip] += 1
             sem_packet_in_counters_list.release()
 
+        sem_total_count_per_timeslot.acquire()
+        total_count_per_timeslot += 1
+        sem_total_count_per_timeslot.release()
+
 
     def time_slot(self):
         global packet_in_counters_list
+        global total_count_per_timeslot
 
         while True:
-            for src_ip in packet_in_counters_list:
-                print src_ip, packet_in_counters_list[src_ip]
+            time.sleep(1)
 
-
-            summary = 0
-            for x in packet_in_counters_list:
-                summary += packet_in_counters_list[x]
-
-            print("--- %s", summary)
+            #TOBEDELETED
+            # for src_ip in packet_in_counters_list:
+            #     print src_ip, packet_in_counters_list[src_ip]
+            #
+            #
+            # summary = 0
+            # for x in packet_in_counters_list:
+            #     summary += packet_in_counters_list[x]
+            #
+            # print("--- %s", summary)
+            #TODO at the end of each time slot update threshold for user and CV
             sem_packet_in_counters_list.acquire()
             packet_in_counters_list = {}
             sem_packet_in_counters_list.release()
-            time.sleep(1)
+
+            sem_total_count_per_timeslot.acquire()
+            total_count_per_timeslot = 0
+            sem_total_count_per_timeslot.release()
+
