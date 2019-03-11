@@ -51,13 +51,12 @@ sem_priority_buffer = threading.Semaphore()
 sem_packet_in_counters_list = threading.Semaphore()
 sem_total_count_per_timeslot = threading.Semaphore()
 
-#TODO 2
+#TODO 2 - apply these
 sem_threshold_user = threading.Semaphore()
 sem_threshold_malicious_user = threading.Semaphore
 
-#TODO apply these semaphores
 sem_confidence_list = threading.Semaphore()
-#sem_max_min_confidence_value = threading.Semaphore()
+sem_max_min_confidence_value = threading.Semaphore()
 
 # TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
 
@@ -257,6 +256,7 @@ class SimpleSwitch15(app_manager.RyuApp):
         global total_count_per_timeslot
         global packet_in_counters_list
 
+        buffer_capacity = 0
         msg = ev.msg
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
@@ -283,7 +283,7 @@ class SimpleSwitch15(app_manager.RyuApp):
             confidence_list[src_ip] = default_confidence_value
             self.update_min_max_confidence_value(src_ip, default_confidence_value)
         else:
-            # TODO if total request from sender in this time slot is more than threashold for him
+            # if total request from sender in this time slot is more than threashold for him
             if packet_in_counters_list[src_ip] > threshold_user[src_ip]:
                 # give him worse confidence value
                 sem_confidence_list.acquire()
@@ -293,24 +293,22 @@ class SimpleSwitch15(app_manager.RyuApp):
                 self.blacklist_user(src_ip)
                 # break function
                 return
-            # else
-                #TODO if controller is not under attack
-                    #sem_confidence_list.acquire()
-                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
-                    #sem_confidence_list.release()
-                #TODO else
-                    #sem_confidence_list.acquire()
-                    #confidence_list[src_ip] = alpha*confidence_list[src_ip] - 1
-                    # sem_confidence_list.release()
+            else:
+                for i in priority_buffer:
+                    buffer_capacity += len(priority_buffer[i])
+                buffer_capacity = buffer_capacity/total_buffers_length
+                # check if controller is under attack
+                if buffer_capacity <= 0.85:
+                    sem_confidence_list.acquire()
+                    confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
+                    sem_confidence_list.release()
+                else:
+                    sem_confidence_list.acquire()
+                    confidence_list[src_ip] = alpha*confidence_list[src_ip] - 1
+                    sem_confidence_list.release()
 
             self.blacklist_user(src_ip)
-
-            # TODO Apply update_min_max_confidence_value after each change of CF
-
-            #TODO  TOBEDELETED delete this just a try
-            packet_ratio = 0.9
-            confidence_list[src_ip] = 0.9
-            self.update_min_max_confidence_value(src_ip, packet_ratio)
+            self.update_min_max_confidence_value(src_ip, confidence_list[src_ip])
 
         self.sorting_to_queues(ev)
 
@@ -460,18 +458,20 @@ class SimpleSwitch15(app_manager.RyuApp):
         global max_confidence_value
 
         if len(min_confidence_value) == 1 and len(max_confidence_value) == 1:
+            sem_max_min_confidence_value.acquire()
             min_confidence_value = (new_value, src_ip)
             max_confidence_value = (new_value, src_ip)
-            # TOBEDELETED
-            # print ">>>>>>>>>MIN CONFIDENCE VALUE>>>>>>>>>>>"
-            # print min_confidence_value
-            # print ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+            sem_max_min_confidence_value.release()
 
         elif min_confidence_value[0] > new_value or min_confidence_value[1] == src_ip:
+            sem_max_min_confidence_value.acquire()
             min_confidence_value = (new_value, src_ip)
+            sem_max_min_confidence_value.release()
 
         elif max_confidence_value[0] < new_value or max_confidence_value[1] == src_ip:
+            sem_max_min_confidence_value.acquire()
             max_confidence_value = (new_value, src_ip)
+            sem_max_min_confidence_value.release()
 
     # TODO apply update_min_max_confidence_value to code :)
     # TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
@@ -493,7 +493,6 @@ class SimpleSwitch15(app_manager.RyuApp):
         total_count_per_timeslot += 1
         sem_total_count_per_timeslot.release()
 
-
     def time_slot(self):
         global packet_in_counters_list
         global total_count_per_timeslot
@@ -511,7 +510,8 @@ class SimpleSwitch15(app_manager.RyuApp):
             #     summary += packet_in_counters_list[x]
             #
             # print("--- %s", summary)
-            #TODO at the end of each time slot update threshold for user and CV
+            #TODO ADD at the end of each time slot update threshold for user and CV
+
             sem_packet_in_counters_list.acquire()
             packet_in_counters_list = {}
             sem_packet_in_counters_list.release()
