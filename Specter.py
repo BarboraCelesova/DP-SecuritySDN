@@ -24,6 +24,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
+from datetime import datetime
 import time
 import thread
 import threading
@@ -116,12 +117,20 @@ class SimpleSwitch14(app_manager.RyuApp):
         global confidence_list
         global incoming_packetin_list
 
+
+        # Returns a datetime object containing the local date and time
+        dateTimeObj = datetime.now()
+
+        # get the time object from datetime object
+        timeObj = dateTimeObj.time()
+        timeStr = timeObj.strftime("%H:%M:%S.%f")
         msg = ev.msg
 
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
 
         eth = pkt.get_protocols(ethernet.ethernet)[0]
+
 
         if src_ip is None:
             self.create_flow(msg)
@@ -131,7 +140,7 @@ class SimpleSwitch14(app_manager.RyuApp):
             # ignore lldp packet
             return
 
-        self.logger.info("packet in %s ... %s %s %s %s", src_ip, msg.datapath.id, eth.src, eth.dst, msg.match['in_port'])
+        self.logger.info("%s -- packet in %s ... %s %s %s %s", timeStr, src_ip, msg.datapath.id, eth.src, eth.dst, msg.match['in_port'])
 
         # ----Call Spectre Modules--------
         self.confidence_award(ev)
@@ -141,7 +150,7 @@ class SimpleSwitch14(app_manager.RyuApp):
         datapath = msg.datapath
 
         pkt = packet.Packet(msg.data)
-        src_ip = self.find_src_ip_add(pkt)
+
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         ofproto = datapath.ofproto
@@ -185,7 +194,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         global total_count_per_timeslot
         global packet_in_counters_list
 
-        buffer_capacity = 0
         msg = ev.msg
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
@@ -450,7 +458,6 @@ class SimpleSwitch14(app_manager.RyuApp):
             #TOBEDELETED
             # for src_ip in packet_in_counters_list:
             #     print src_ip, packet_in_counters_list[src_ip]
-            #
             #
             # summary = 0
             # for x in packet_in_counters_list:
