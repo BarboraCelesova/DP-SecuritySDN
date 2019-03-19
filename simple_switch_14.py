@@ -65,7 +65,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-	# Returns a datetime object containing the local date and time
+        # Returns a datetime object containing the local date and time
         dateTimeObj = datetime.now()
 
         # get the time object from datetime object
@@ -79,7 +79,7 @@ class SimpleSwitch14(app_manager.RyuApp):
         in_port = msg.match['in_port']
 
         pkt = packet.Packet(msg.data)
-	src_ip = self.find_src_ip_add(pkt)
+        src_ip = self.find_src_ip_add(pkt)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
@@ -90,9 +90,10 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
-	if src_ip is not None:
-	    self.logger.info("%s -- packet in %s %s %s %s", timeStr, dpid, src, dst, in_port)
-        print ("%s -- packet in %s %s %s %s", timeStr, dpid, src, dst, in_port)
+
+        if src_ip is not None:
+            self.logger.info("%s -- packet in %s %s %s %s", timeStr, dpid, src, dst, in_port)
+            print timeStr, dpid, src, dst, in_port
 
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
@@ -116,6 +117,7 @@ class SimpleSwitch14(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+
 
     def find_src_ip_add(self, pkt):
         arp_pkt = pkt.get_protocol(arp.arp)

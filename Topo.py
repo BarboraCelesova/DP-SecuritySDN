@@ -7,6 +7,7 @@ from mininet.link import TCLink
 from mininet.cli import CLI
 import time
 import datetime
+
 from random import randint
 
 
@@ -36,25 +37,25 @@ def CreateTopology():
     c0 = net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6653)
 
     print 'Creating links...'
-    net.addLink(h1, s1, bw=100)
+    net.addLink(h1, s1)
     net.addLink(h2, s1, bw=100)
     net.addLink(h3, s1, bw=100)
     net.addLink(h4, s1, bw=100)
-    net.addLink(h5, s1, bw=100)
+    net.addLink(h5, s1)
 
     net.addLink(h6, s1, bw=100)
     net.addLink(h7, s1, bw=100)
-    net.addLink(h8, s1, bw=100)
+    net.addLink(h8, s1)
     net.addLink(h9, s2, bw=100)
     net.addLink(h10, s2, bw=100)
 
-    net.addLink(h11, s2, bw=100)
+    net.addLink(h11, s2)
     net.addLink(h12, s2, bw=100)
     net.addLink(h13, s2, bw=100)
     net.addLink(h14, s2, bw=100)
-    net.addLink(h15, s2, bw=100)
+    net.addLink(h15, s2)
 
-    net.addLink(s1, s2, bw=100)
+    net.addLink(s1, s2)
 
     print 'Starting network...'
     net.build()
@@ -79,44 +80,68 @@ def CreateTopology():
     #NoNattack traffic
     # for i in [2,3,4,6,7,9,10,12,13,14]:
     #     for j in range(1,6):
-    #         host[i].cmd('hping3 -c 50 -i 1 -2 10.0.0.10' + str(j) + ' &> h' + str(i) + '.txt &')
+    #         host[i].cmd('hping3 -D -c 50 -i 1 -2 10.0.0.10' + str(j) + ' &')
+
+
+    t = datetime.datetime.utcnow()
+    sleeptime = 1 - (t.microsecond / 1000000.0)
+    time.sleep(sleeptime)
 
     #Attack traffic
-    # for i in [1,5,8,11,15]:
-    #     for j in range(1, 6):
-    #         host[i].cmd('hping3 -c 50 -i 1 -2 10.0.0.10' + str(j) + ' &> h' + str(i) + '.txt &')
-    #
-    # timer = 49
-    #
+    for i in [1,5,8,11,15]:
+        for j in range(1, 6):
+            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 10 &')
+            # host[i].cmd('hping3 -D -c 50 -i 1 -2 10.0.0.10' + str(j) + ' &> h' + str(i) + '.txt &')
+
+    timer = 49
+
+    t = datetime.datetime.utcnow()
+    sleeptime = 1 - (t.microsecond / 1000000.0)
+    time.sleep(sleeptime)
+
     # time.sleep(1)
-    # for j in range(106,115):
-    #     for i in [1,5,8,11,15]:
-    #         host[i].cmd('hping3 -c ' + str(timer) + ' -i 1 -2 10.0.0.' + str(j) + ' &> h' + str(i) + '.txt &')
-    #         timer -= 1
-    #         time.sleep(0.9)
-    #
+    for j in range(106,115):
+        for i in [1,5,8,11,15]:
+            host[i].cmd('iperf -c 10.0.0.' + str(j) + ' -u -t 10 &')
+            # host[i].cmd('hping3 -D -c ' + str(timer) + ' -i 1 -2 10.0.0.' + str(j) + ' &> h' + str(i) + '.txt &')
+            timer -= 1
+            t = datetime.datetime.utcnow()
+            sleeptime = 1 - (t.microsecond / 1000000.0)
+            time.sleep(sleeptime)
+
     # for i in [1, 5, 8, 11]:
     #     host[i].cmd('hping3 -c ' + str(timer) + ' -i 1 -2 10.0.0.115 &> h' + str(i) + '.txt &')
     #     timer -= 1
     #     time.sleep(1)
 
-    t = datetime.time
-    sleeptime = 1 - ((float)(int(t.second)) + (float)(int(t.microsecond)) / 1000000.0)
-    time.sleep(sleeptime)
+    # ///////////////////////////////////////////////////////////
 
-    attackers = [1,5,8,11,15]
-    count = 0
-    for n in range(0, 50):
-        for j in range(0, 5 + (n / 5)):
-            for i in attackers:
-                host[i].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
-                count += 1
-        for k in range(0, n % 5):
-            host[attackers[randint(0, len(attackers) - 1)]].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
-            count += 1
-        t = datetime.time
-        sleeptime = 1 - ((float)(int(t.second)) + (float)(int(t.microsecond)) / 1000000.0)
-        time.sleep(sleeptime)
+    # t = datetime.datetime.utcnow()
+    # print t
+    # print t.second
+    # print t.microsecond
+    # sleeptime = 1 - (t.microsecond / 1000000.0)
+    # print sleeptime
+    # time.sleep(sleeptime)
+    # host[1].cmd('sudo wireshark &')
+    #
+    # attackers = [1,5,8,11,15]
+    # count = 0
+    # for n in range(0, 50):
+    #     count = 0
+    #     for j in range(0, 5 + (n / 5)):
+    #         for i in attackers:
+    #             host[i].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
+    #             host[i].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
+    #             count += 1
+    #     for k in range(0, n % 5):
+    #         host[attackers[randint(0, len(attackers) - 1)]].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
+    #         host[attackers[randint(0, len(attackers) - 1)]].cmd('hping3 -c 1 -2 10.0.0.' + str(randint(101, 115)) + ' &')
+    #         count += 1
+    #     print t.second, count
+    #     t = datetime.datetime.utcnow()
+    #     sleeptime = 1 - (t.microsecond / 1000000.0)
+    #     time.sleep(sleeptime)
 
 
     print 'Running CLI...'
