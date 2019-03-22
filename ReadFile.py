@@ -11,7 +11,7 @@ def main():
         lineList.append(line)
 
     times = []
-    for i in range (0, len(lineList)):
+    for i in range(0, len(lineList)):
         tajm = lineList[i].split(" ")
         x = tajm[0].split(".")
         times.append(x[0])
