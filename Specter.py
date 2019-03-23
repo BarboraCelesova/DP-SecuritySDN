@@ -24,7 +24,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
-from datetime import datetime
+from datetime import datetime, date
 import time
 import thread
 import threading
@@ -217,6 +217,12 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         arrival_time = int(round(time.time() * 1000))
 
+        # Returns a datetime object containing the local date and time
+        dateTimeObj = datetime.now()
+        # get the time object from datetime object
+        timeObj = dateTimeObj.time()
+        dt_arrival_time = timeObj.strftime("%H:%M:%S.%f")
+
         self.update_packet_in_counter_list(src_ip)
 
         # store arrival time and source IP add
@@ -244,7 +250,7 @@ class SimpleSwitch14(app_manager.RyuApp):
                 confidence_list[src_ip] = alpha * confidence_list[src_ip] - 1
                 sem_confidence_list.release()
                 #reject this request
-                print 'REJECTED', arrival_time, src_ip
+                print 'REJECTED', dt_arrival_time, src_ip
                 rejected = 1
                 self.blacklist_user(src_ip, msg, arrival_time)
                 self.update_min_max_confidence_value(src_ip, confidence_list[src_ip])
@@ -268,32 +274,32 @@ class SimpleSwitch14(app_manager.RyuApp):
             self.update_min_max_confidence_value(src_ip, confidence_list[src_ip])
 
         if rejected == 0:
-            self.sorting_to_queues(ev, arrival_time)
+            self.sorting_to_queues(ev, dt_arrival_time)
 
-    def blacklist_user(self, src_ip, msg, arrival_time):
+    def blacklist_user(self, src_ip, msg, dt_arrival_time):
         global confidence_list
         global threshold_malicious_user
 
-        if confidence_list[src_ip] < threshold_malicious_user:
-            print 'REJECTED_blacklisted', arrival_time, src_ip
-            datapath = msg.datapath
-            ofproto = datapath.ofproto
-            parser = datapath.ofproto_parser
-            inst = [parser.OFPInstructionActions(ofproto.OFPIT_CLEAR_ACTIONS, [])]
-            in_port = msg.match['in_port']
-            match = parser.OFPMatch(
-                in_port=in_port,
-                eth_type=ether_types.ETH_TYPE_IP,
-                ipv4_src=src_ip)
-            priority = 100
-            mod = parser.OFPFlowMod(
-                datapath=datapath,
-                match=match,
-                command=ofproto.OFPFC_ADD,
-                priority=priority,
-                instructions=inst)
-            datapath.send_msg(mod)
-            return -1
+        # if confidence_list[src_ip] < threshold_malicious_user:
+        #     print 'REJECTED_blacklisted', dt_arrival_time, src_ip
+        #     datapath = msg.datapath
+        #     ofproto = datapath.ofproto
+        #     parser = datapath.ofproto_parser
+        #     inst = [parser.OFPInstructionActions(ofproto.OFPIT_CLEAR_ACTIONS, [])]
+        #     in_port = msg.match['in_port']
+        #     match = parser.OFPMatch(
+        #         in_port=in_port,
+        #         eth_type=ether_types.ETH_TYPE_IP,
+        #         ipv4_src=src_ip)
+        #     priority = 100
+        #     mod = parser.OFPFlowMod(
+        #         datapath=datapath,
+        #         match=match,
+        #         command=ofproto.OFPFC_ADD,
+        #         priority=priority,
+        #         instructions=inst)
+        #     datapath.send_msg(mod)
+        #     return -1
         return 0
 
     def sorting_to_queues(self, ev, arrival_time):
