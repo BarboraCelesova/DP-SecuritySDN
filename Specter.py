@@ -66,6 +66,7 @@ class SimpleSwitch14(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_4.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
+        print 'State Time Src_IP'
         global number_of_queues
         global priority_buffer
 
@@ -141,7 +142,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         # self.logger.info("%s -- packet in %s ... %s %s %s %s", timeStr, src_ip, msg.datapath.id, eth.src, eth.dst, msg.match['in_port'])
         # print timeStr, src_ip, msg.datapath.id, eth.src, eth.dst, msg.match['in_port']
-        print '-- NEW PACKET IN --', timeStr, src_ip
+        print 'NEW_PACKET_IN', timeStr, src_ip
 
         # ----Call Spectre Modules--------
         self.confidence_award(ev)
@@ -161,7 +162,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         src_ip = self.find_src_ip_add(pkt)
         if src_ip is not None:
-            print '-- PASSED --', dept_time, src_ip
+            print 'PASSED', dept_time, src_ip
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         ofproto = datapath.ofproto
@@ -205,6 +206,7 @@ class SimpleSwitch14(app_manager.RyuApp):
         global total_count_per_timeslot
         global packet_in_counters_list
         buffer_capacity = 0
+        rejected = 0
 
         msg = ev.msg
         pkt = packet.Packet(msg.data)
@@ -242,7 +244,8 @@ class SimpleSwitch14(app_manager.RyuApp):
                 confidence_list[src_ip] = alpha * confidence_list[src_ip] - 1
                 sem_confidence_list.release()
                 #reject this request
-                print '-- REJECTED --', arrival_time, src_ip
+                print 'REJECTED', arrival_time, src_ip
+                rejected = 1
                 self.blacklist_user(src_ip, msg, arrival_time)
                 self.update_min_max_confidence_value(src_ip, confidence_list[src_ip])
                 # break function
@@ -261,17 +264,18 @@ class SimpleSwitch14(app_manager.RyuApp):
                     confidence_list[src_ip] = alpha*confidence_list[src_ip] - 1
                     sem_confidence_list.release()
 
-            self.blacklist_user(src_ip, msg, arrival_time)
+            rejected = self.blacklist_user(src_ip, msg, arrival_time)
             self.update_min_max_confidence_value(src_ip, confidence_list[src_ip])
 
-        self.sorting_to_queues(ev, arrival_time)
+        if rejected == 0:
+            self.sorting_to_queues(ev, arrival_time)
 
     def blacklist_user(self, src_ip, msg, arrival_time):
         global confidence_list
         global threshold_malicious_user
 
         if confidence_list[src_ip] < threshold_malicious_user:
-            print '-- REJECTED blacklisted --', arrival_time, src_ip
+            print 'REJECTED_blacklisted', arrival_time, src_ip
             datapath = msg.datapath
             ofproto = datapath.ofproto
             parser = datapath.ofproto_parser
@@ -289,6 +293,8 @@ class SimpleSwitch14(app_manager.RyuApp):
                 priority=priority,
                 instructions=inst)
             datapath.send_msg(mod)
+            return -1
+        return 0
 
     def sorting_to_queues(self, ev, arrival_time):
         global priority_buffer
@@ -314,13 +320,13 @@ class SimpleSwitch14(app_manager.RyuApp):
         if actual_total_buffer_length < total_buffers_length:
             priority_buffer[index_to_buffer].append(msg)
         elif index_to_buffer == 1:
-            print '-- REJECTED --', arrival_time, src_ip
+            print 'REJECTED', arrival_time, src_ip
         else:
             for i in range(1, index_to_buffer):
                 if len(priority_buffer[i]) > 0:
                     pkt = packet.Packet(priority_buffer[i].data)
                     src_ip = self.find_src_ip_add(pkt)
-                    print '-- REJECTED  POP.ed from PB --', arrival_time, src_ip
+                    print 'REJECTED_POP', arrival_time, src_ip
                     priority_buffer[i].pop()
                     priority_buffer[index_to_buffer].append(msg)
                     break

@@ -5,7 +5,7 @@
 from collections import Counter
 
 def main():
-    f = open("/home/barbora/PycharmProjects/DP-SecuritySDN/a.txt", "r")
+    f = open("/home/barbora/PycharmProjects/DP-SecuritySDN/ss.txt", "r")
     lineList = []
     for line in f:
         lineList.append(line)
@@ -19,10 +19,14 @@ def main():
     counter = sorted(Counter(times).items())
     numline = 1
     shouldBe = 150
+    sum = 0
 
     for i in counter:
         print numline, i, shouldBe
         numline += 1
         shouldBe += 2
+        sum += i[1]
+
+    print 'Sum is ',sum
 
 main()
