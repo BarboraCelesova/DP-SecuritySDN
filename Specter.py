@@ -45,15 +45,13 @@ packet_in_counters_list = {}
 total_count_per_timeslot = 0
 threshold_user = {}
 threshold_malicious_user = 0.1
+max_threshold = 7
 
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
 sem_packet_in_counters_list = threading.Semaphore()
 sem_total_count_per_timeslot = threading.Semaphore()
-
-# TODO 2 - apply these
 sem_threshold_user = threading.Semaphore()
-
 sem_confidence_list = threading.Semaphore()
 sem_max_min_confidence_value = threading.Semaphore()
 
@@ -81,7 +79,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         try:
             thread.start_new_thread(self.serving_requests)
             thread.start_new_thread(self.time_slot)
-            # return
         except:
             print "Error: unable to start thread"
 
@@ -231,9 +228,6 @@ class SimpleSwitch14(app_manager.RyuApp):
             incoming_packetin_list[arrival_time] = [src_ip]
             sem_incoming_packetin_list.release()
 
-            sem_threshold_user.acquire()
-            threshold_user[src_ip] = 13
-            sem_threshold_user.release()
         else:
             sem_incoming_packetin_list.acquire()
             incoming_packetin_list[arrival_time].append(src_ip)
@@ -242,12 +236,19 @@ class SimpleSwitch14(app_manager.RyuApp):
         if src_ip not in confidence_list:
             confidence_list[src_ip] = default_confidence_value
             self.update_min_max_confidence_value(src_ip, default_confidence_value)
+
+            sem_threshold_user.acquire()
+            threshold_user[src_ip] = max_threshold
+            sem_threshold_user.release()
+
         else:
+            # self.logger.info('!!!!!THRESHOLD USER', threshold_user)
             # if total request from sender in this time slot is more than threshold for him
             if packet_in_counters_list[src_ip] > threshold_user[src_ip]:
                 # give him worse confidence value
+                self.logger.info('REJECTED -- %s, %s, thr %s', src_ip, packet_in_counters_list[src_ip], threshold_user[src_ip])
                 sem_confidence_list.acquire()
-                confidence_list[src_ip] = alpha * confidence_list[src_ip] - 1
+                confidence_list[src_ip] = alpha * confidence_list[src_ip] - 0.1
                 sem_confidence_list.release()
                 #reject this request
                 print 'REJECTED', dt_arrival_time, src_ip
@@ -263,11 +264,13 @@ class SimpleSwitch14(app_manager.RyuApp):
                 # check if controller is under attack
                 if buffer_capacity <= 0.95:
                     sem_confidence_list.acquire()
-                    confidence_list[src_ip] = alpha*confidence_list[src_ip] + 1
+                    # TODO CHANGED 0.1
+                    confidence_list[src_ip] = alpha*confidence_list[src_ip] + 0.1
                     sem_confidence_list.release()
                 else:
                     sem_confidence_list.acquire()
-                    confidence_list[src_ip] = alpha*confidence_list[src_ip] - 1
+                    # TODO CHANGED 0.1
+                    confidence_list[src_ip] = alpha*confidence_list[src_ip] - 0.1
                     sem_confidence_list.release()
 
             rejected = self.blacklist_user(src_ip, msg, dt_arrival_time)
@@ -282,6 +285,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         if confidence_list[src_ip] < threshold_malicious_user:
             print 'REJECTED_blacklisted', dt_arrival_time, src_ip
+            self.logger.info('***BLACKLISTED %s, %s, %s ', dt_arrival_time, src_ip, confidence_list[src_ip])
             datapath = msg.datapath
             ofproto = datapath.ofproto
             parser = datapath.ofproto_parser
@@ -441,11 +445,13 @@ class SimpleSwitch14(app_manager.RyuApp):
         global confidence_list
 
         number_of_slots = 0
+        time.sleep(1)
 
         while True:
-            time.sleep(1)
-            self.logger.info('*** Slot number %s', number_of_slots)
-            number_of_slots += 1
+            start = datetime.now()
+
+            # self.logger.info('*** Slot number %s', number_of_slots)
+            # number_of_slots += 1
 
             # # TOBEDELETED
             # # Returns a datetime object containing the local date and time
@@ -468,15 +474,7 @@ class SimpleSwitch14(app_manager.RyuApp):
             #
             # print("--- %s", summary)
 
-            #Sender did not send any packet in this time slot - make his CV better
-            for src_ip in confidence_list:
-                if src_ip not in packet_in_counters_list:
-                    sem_confidence_list.acquire()
-                    confidence_list[src_ip] = alpha * confidence_list[src_ip]
-                    sem_confidence_list.release()
-                # TODO ADD at the end of each time slot update threshold for user
-                # else:
-                #     TODO
+            old_packet_in_counters_list = packet_in_counters_list
 
             sem_packet_in_counters_list.acquire()
             packet_in_counters_list = {}
@@ -485,3 +483,40 @@ class SimpleSwitch14(app_manager.RyuApp):
             sem_total_count_per_timeslot.acquire()
             total_count_per_timeslot = 0
             sem_total_count_per_timeslot.release()
+
+            for src_ip in old_packet_in_counters_list:
+                if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (
+                    threshold_user[src_ip] < max_threshold):
+                     sem_threshold_user.acquire()
+                     threshold_user[src_ip] += 1
+                     self.logger.info('++++++++++ THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                     sem_threshold_user.release()
+                elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
+                     sem_threshold_user.acquire()
+                     threshold_user[src_ip] -= 1
+                     self.logger.info('---------- THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                     sem_threshold_user.release()
+
+            # for src_ip in confidence_list:
+            #     # Sender did not send any packet in this time slot - make his CV better
+            #     if src_ip not in old_packet_in_counters_list:
+            #         sem_confidence_list.acquire()
+            #         confidence_list[src_ip] = alpha * confidence_list[src_ip]
+            #         sem_confidence_list.release()
+            #     # At the end of each time slot update threshold for user
+            #     else:
+            #         if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (threshold_user[src_ip] < max_threshold):
+            #             sem_threshold_user.acquire()
+            #             threshold_user[src_ip] += 1
+            #             sem_threshold_user.release()
+            #         elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
+            #             sem_threshold_user.acquire()
+            #             threshold_user[src_ip] -= 1
+            #             sem_threshold_user.release()
+
+            last = datetime.now()
+            cakaj = last - start
+            seconds = cakaj.total_seconds()
+            self.logger.info('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ WORKER PRACOVAL %s', str(seconds))
+            if (1 - seconds) > 0:
+                time.sleep(1 - seconds)

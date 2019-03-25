@@ -7,8 +7,51 @@ from mininet.link import TCLink
 from mininet.cli import CLI
 import time
 import datetime
+from datetime import datetime as dt
+import thread
 
-from random import randint
+def WaitTillEndOfSec(sec):
+    t = datetime.datetime.utcnow()
+    sleeptime = sec - (t.microsecond / 1000000.0)
+    time.sleep(sleeptime)
+
+def BaseTraffic(host, startIP, endIP, endIter, sec):
+    dateTimeObj = dt.now()
+    # get the time object from datetime object
+    timeObj = dateTimeObj.time()
+    dept_time = timeObj.strftime("%H:%M:%S.%f")
+
+    print '++ TRAFFIC', dept_time, startIP, endIP
+
+    for i in range(startIP, endIP):
+        for j in range(0, endIter):
+            host[i].cmd('mausezahn h' + str(i) + '-eth0 -c ' + str(sec) + ' -d 1s -b aa:bb:cc:dd:ee:ff -B 10.0.0.100 -t udp &')
+
+def GrowingTraffic(host, startIP, endIP, endIter, sec):
+    dateTimeObj = dt.now()
+    # get the time object from datetime object
+    timeObj = dateTimeObj.time()
+    dept_time = timeObj.strftime("%H:%M:%S.%f")
+
+    print '++ GROWING TRAFFIC', dept_time, startIP, endIP
+    for y in range(0, endIter):
+        for i in range(startIP, endIP):
+            host[i].cmd('mausezahn h' + str(i) + '-eth0 -c ' + str(sec) + ' -d 1s -b aa:bb:cc:dd:ee:ff -B 10.0.0.100 -t udp &')
+            sec -= 1
+            if sec == 0:
+                WaitTillEndOfSec(1)
+                return
+            WaitTillEndOfSec(1)
+
+def GrowingTrafficThread(host):
+
+    BaseTraffic(host, 80, 85, 5, 25)
+    WaitTillEndOfSec(1)
+    GrowingTraffic(host, 80, 85, 5, 24)
+    #---100pkts
+    BaseTraffic(host, 85, 90, 10, 25)
+    WaitTillEndOfSec(1)
+    GrowingTraffic(host, 85, 90, 5, 24)
 
 
 def CreateTopology():
@@ -44,148 +87,37 @@ def CreateTopology():
 
     host = {}
 
-    print '*** Iperf flood...'
+    print '*** Mausezahn flood...'
     for i in range(1, 101):
         host[i] = net.getNodeByName('h' + str(i))
 
     print '#Growing pattern'
-
-    startTime = datetime.datetime.utcnow()
-    sleeptime = 1 - (startTime.microsecond / 1000000.0)
-    time.sleep(sleeptime)
-
-    #NoNattack traffic
-    for i in range(1, 11):
-        for j in range(1, 4):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 9 &')
-
-    for i in range(11, 16):
-        for j in range(1, 5):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 9 &')
-
-    # #Attack traffic
-    for i in range(80, 85):
-        for j in range(1, 6):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-
-    #To wait until beginning of another sec
     t = datetime.datetime.utcnow()
     sleeptime = 1 - (t.microsecond / 1000000.0)
     time.sleep(sleeptime)
 
-    for j in range(6, 8):
-        for i in range(80, 85):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-            t = datetime.datetime.utcnow()
-            sleeptime = 1 - (t.microsecond / 1000000.0)
-            time.sleep(sleeptime)
+    thread.start_new_thread(GrowingTrafficThread, (host,))
 
-    # # print '### IDEM ZABIJAT ', datetime.datetime.time().strftime("%H:%M:%S.%f")
-    for i in range(1, 16):
-        host[i].cmd('sudo pkill -9 -f iperf &')
+    # x = 1
+    # for count in range(0, 10):
+    #
+    #     BaseTraffic(host, x, x + 10, 3, 5)
+    #     BaseTraffic(host, x + 10, x + 15, 4, 5)
+    #     x += 15
+    #
+    #     if x >= 64:
+    #         x = 1
+    #
+    #     WaitTillEndOfSec(5)
 
-    t = datetime.datetime.utcnow()
-    sleeptime = 1 - (t.microsecond / 1000000.0)
-    time.sleep(sleeptime)
+    x = 1
+    for count in range(0, 25):
+        BaseTraffic(host, x, x + 25, 2, 2)
+        x += 25
 
-    #---after first 10 seconds
-
-    # NoNattack traffic
-    for i in range(16, 26):
-        for j in range(1, 4):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 9 &')
-    for i in range(27, 32):
-        for j in range(1, 5):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 9 &')
-    #Attack
-    for j in range(6, 8):
-        for i in range(80, 85):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-            t = datetime.datetime.utcnow()
-            sleeptime = 1 - (t.microsecond / 1000000.0)
-            time.sleep(sleeptime)
-
-    for i in range(16, 32):
-        host[i].cmd('sudo pkill -9 -f iperf &')
-
-    t = datetime.datetime.utcnow()
-    sleeptime = 1 - (t.microsecond / 1000000.0)
-    time.sleep(sleeptime)
-    # ---after first 20 seconds
-
-    # NoNattack traffic
-    for i in range(32, 42):
-        for j in range(1, 4):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-    for i in range(43, 48):
-        for j in range(1, 5):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-
-    # Attack
-    for j in range(6, 8):
-        for i in range(80, 85):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-            t = datetime.datetime.utcnow()
-            sleeptime = 1 - (t.microsecond / 1000000.0)
-            time.sleep(sleeptime)
-
-    for i in range(32, 48):
-        host[i].cmd('sudo pkill -9 -f iperf &')
-
-    # ---after first 30 seconds
-
-    # NoNattack traffic
-    for i in range(48, 59):
-        for j in range(1, 4):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-    for i in range(59, 64):
-        for j in range(1, 5):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-
-    # Attack
-    for j in range(6, 8):
-        for i in range(80, 85):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-            t = datetime.datetime.utcnow()
-            sleeptime = 1 - (t.microsecond / 1000000.0)
-            time.sleep(sleeptime)
-
-    for i in range(48, 64):
-        host[i].cmd('sudo pkill -9 -f iperf &')
-    for i in range(80, 85):
-        host[i].cmd('sudo pkill -9 -f iperf &')
-
-    # ---after first 40 seconds
-
-    # NoNattack traffic
-    for i in range(64, 75):
-        for j in range(1, 4):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-    for i in range(75, 80):
-        for j in range(1, 5):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 20 &')
-
-    # Attack traffic
-    for i in range(86, 96):
-        for j in range(10, 24):
-            host[i].cmd('iperf -c 10.0.0.10' + str(j) + ' -u -t 60 &')
-
-    # To wait until beginning of another sec
-    t = datetime.datetime.utcnow()
-    sleeptime = 1 - (t.microsecond / 1000000.0)
-    time.sleep(sleeptime)
-
-
-    for i in range(86, 96):
-        host[i].cmd('iperf -c 10.0.0.125 -u -t 20 &')
-        t = datetime.datetime.utcnow()
-        sleeptime = 1 - (t.microsecond / 1000000.0)
-        time.sleep(sleeptime)
-
-    for i in range(64, 80):
-        host[i].cmd('sudo pkill -9 -f iperf &')
-    for i in range(86, 96):
-        host[i].cmd('sudo pkill -9 -f iperf &')
+        if x >= 54:
+            x = 1
+        WaitTillEndOfSec(2)
 
 
     print 'Running CLI...'
