@@ -45,7 +45,8 @@ packet_in_counters_list = {}
 total_count_per_timeslot = 0
 threshold_user = {}
 threshold_malicious_user = 0.1
-max_threshold = 7
+max_threshold = 4  # ToDo 7
+
 
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
