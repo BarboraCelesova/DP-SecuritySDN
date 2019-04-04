@@ -24,6 +24,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
+from ryu import cfg
 from datetime import datetime, date
 import time
 import thread
@@ -45,7 +46,8 @@ packet_in_counters_list = {}
 total_count_per_timeslot = 0
 threshold_user = {}
 threshold_malicious_user = 0.1
-max_threshold = 4  # ToDo 7
+max_threshold = 4
+list_of_priority_users = {}
 
 
 sem_incoming_packetin_list = threading.Semaphore()
@@ -57,10 +59,6 @@ sem_confidence_list = threading.Semaphore()
 sem_max_min_confidence_value = threading.Semaphore()
 
 
-# TODO Add option for administrator to set some values (ex. number of queues, total buffers length and so on..)
-# TODO apply update_min_max_confidence_value to code :)
-# TODO spravit funkciu na zmenu min alebo max CF ak sa rejectne request
-
 class SimpleSwitch14(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_4.OFP_VERSION]
 
@@ -68,9 +66,31 @@ class SimpleSwitch14(app_manager.RyuApp):
         print 'State Time Src_IP'
         global number_of_queues
         global priority_buffer
+        global total_buffers_length
+        global list_of_priority_users
+        global max_threshold
 
         super(SimpleSwitch14, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
+
+
+        CONF = cfg.CONF
+        CONF.register_opts([
+            cfg.IntOpt('NoQueues', default=3),
+            cfg.IntOpt('TotalBuffLength', default=200),
+            cfg.IntOpt('Threshold', default=4),
+            cfg.ListOpt('ListOfPriorityUsers', default=[])
+        ])
+
+        #TOBEDELETED
+        # print 'Number of queues = {}'.format(CONF.NoQueues)
+        # print 'Total length of buffers = {}'.format(CONF.TotalBuffLength)
+        # print 'List of priority users = {}'.format(CONF.ListOfPriorityUsers)
+
+        number_of_queues = CONF.NoQueues
+        total_buffers_length = CONF.TotalBuffLength
+        max_threshold = CONF.Threshold
+        list_of_priority_users = CONF.ListOfPriorityUsers
 
         sem_priority_buffer.acquire()
         for i in range(1, number_of_queues + 1):
@@ -203,8 +223,11 @@ class SimpleSwitch14(app_manager.RyuApp):
         global incoming_packetin_list
         global total_count_per_timeslot
         global packet_in_counters_list
+        global list_of_priority_users
+
         buffer_capacity = 0
         rejected = 0
+
 
         msg = ev.msg
         pkt = packet.Packet(msg.data)
@@ -243,6 +266,10 @@ class SimpleSwitch14(app_manager.RyuApp):
             sem_threshold_user.release()
 
         else:
+            # process priority users with highest priority
+            for ip in list_of_priority_users:
+                if src_ip == ip:
+                    self.sorting_to_queues(ev, dt_arrival_time)
             # self.logger.info('!!!!!THRESHOLD USER', threshold_user)
             # if total request from sender in this time slot is more than threshold for him
             if packet_in_counters_list[src_ip] > threshold_user[src_ip]:
