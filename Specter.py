@@ -49,7 +49,6 @@ threshold_malicious_user = 0.1
 max_threshold = 4
 list_of_priority_users = {}
 
-
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
 sem_packet_in_counters_list = threading.Semaphore()
