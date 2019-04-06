@@ -63,7 +63,9 @@ class SimpleSwitch14(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_4.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
+        #do not delete or comment this print
         print 'State Time Src_IP'
+
         global number_of_queues
         global priority_buffer
         global total_buffers_length
@@ -73,7 +75,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         super(SimpleSwitch14, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-
         CONF = cfg.CONF
         CONF.register_opts([
             cfg.IntOpt('NoQueues', default=3),
@@ -81,11 +82,6 @@ class SimpleSwitch14(app_manager.RyuApp):
             cfg.IntOpt('Threshold', default=4),
             cfg.ListOpt('ListOfPriorityUsers', default=[])
         ])
-
-        #TOBEDELETED
-        # print 'Number of queues = {}'.format(CONF.NoQueues)
-        # print 'Total length of buffers = {}'.format(CONF.TotalBuffLength)
-        # print 'List of priority users = {}'.format(CONF.ListOfPriorityUsers)
 
         number_of_queues = CONF.NoQueues
         total_buffers_length = CONF.TotalBuffLength
@@ -228,7 +224,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         buffer_capacity = 0
         rejected = 0
 
-
         msg = ev.msg
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
@@ -292,12 +287,10 @@ class SimpleSwitch14(app_manager.RyuApp):
                 # check if controller is under attack
                 if buffer_capacity <= 0.95:
                     sem_confidence_list.acquire()
-                    # TODO CHANGED 0.1
                     confidence_list[src_ip] = alpha*confidence_list[src_ip] + 0.1
                     sem_confidence_list.release()
                 else:
                     sem_confidence_list.acquire()
-                    # TODO CHANGED 0.1
                     confidence_list[src_ip] = alpha*confidence_list[src_ip] - 0.1
                     sem_confidence_list.release()
 
@@ -428,7 +421,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         else:
             pass
 
-
     def update_min_max_confidence_value(self, src_ip, new_value):
         global min_confidence_value
         global max_confidence_value
@@ -478,30 +470,6 @@ class SimpleSwitch14(app_manager.RyuApp):
         while True:
             start = datetime.now()
 
-            # self.logger.info('*** Slot number %s', number_of_slots)
-            # number_of_slots += 1
-
-            # # TOBEDELETED
-            # # Returns a datetime object containing the local date and time
-            # dateTimeObj = datetime.now()
-            #
-            # # get the time object from datetime object
-            # timeObj = dateTimeObj.time()
-            # timeStr = timeObj.strftime("%H:%M:%S.%f")
-            #
-            # self.logger.info(timeStr)
-            # for src_ip in confidence_list:
-            #     self.logger.info(src_ip, confidence_list[src_ip])
-            # self.logger.info( '*************************')
-            # for src_ip in packet_in_counters_list:
-            #     print src_ip, packet_in_counters_list[src_ip]
-            #
-            # summary = 0
-            # for x in packet_in_counters_list:
-            #     summary += packet_in_counters_list[x]
-            #
-            # print("--- %s", summary)
-
             old_packet_in_counters_list = packet_in_counters_list
 
             sem_packet_in_counters_list.acquire()
@@ -512,35 +480,24 @@ class SimpleSwitch14(app_manager.RyuApp):
             total_count_per_timeslot = 0
             sem_total_count_per_timeslot.release()
 
-            for src_ip in old_packet_in_counters_list:
-                if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (
-                    threshold_user[src_ip] < max_threshold):
-                     sem_threshold_user.acquire()
-                     threshold_user[src_ip] += 1
-                     self.logger.info('++++++++++ THRESHOLD %s %s', src_ip, threshold_user[src_ip])
-                     sem_threshold_user.release()
-                elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
-                     sem_threshold_user.acquire()
-                     threshold_user[src_ip] -= 1
-                     self.logger.info('---------- THRESHOLD %s %s', src_ip, threshold_user[src_ip])
-                     sem_threshold_user.release()
-
-            # for src_ip in confidence_list:
-            #     # Sender did not send any packet in this time slot - make his CV better
-            #     if src_ip not in old_packet_in_counters_list:
-            #         sem_confidence_list.acquire()
-            #         confidence_list[src_ip] = alpha * confidence_list[src_ip]
-            #         sem_confidence_list.release()
-            #     # At the end of each time slot update threshold for user
-            #     else:
-            #         if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (threshold_user[src_ip] < max_threshold):
-            #             sem_threshold_user.acquire()
-            #             threshold_user[src_ip] += 1
-            #             sem_threshold_user.release()
-            #         elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
-            #             sem_threshold_user.acquire()
-            #             threshold_user[src_ip] -= 1
-            #             sem_threshold_user.release()
+            for src_ip in confidence_list:
+                # Sender did not send any packet in this time slot - make his CV better
+                if src_ip not in old_packet_in_counters_list:
+                    sem_confidence_list.acquire()
+                    confidence_list[src_ip] = alpha * confidence_list[src_ip]
+                    sem_confidence_list.release()
+                # At the end of each time slot update threshold for user
+                else:
+                    if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (threshold_user[src_ip] < max_threshold):
+                        sem_threshold_user.acquire()
+                        threshold_user[src_ip] += 1
+                        self.logger.info('++++++++++ THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                        sem_threshold_user.release()
+                    elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
+                        sem_threshold_user.acquire()
+                        threshold_user[src_ip] -= 1
+                        self.logger.info('---------- THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                        sem_threshold_user.release()
 
             last = datetime.now()
             cakaj = last - start
