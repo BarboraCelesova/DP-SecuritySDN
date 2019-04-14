@@ -185,16 +185,17 @@ def CreateTopology():
     sleeptime = 1 - (t.microsecond / 1000000.0)
     time.sleep(sleeptime)
     #
+
     # # # # ------
-    # print '#Growing pattern...'
+    print '#Growing pattern...'
     # thread.start_new_thread(GrowingTrafficThread, (host,))
-    #
-    # # POISON RANDOM
-    # for p in range(0, 50):
-    #     for j in range(0, 50):
-    #         x = random.randint(1, 79)
-    #         BaseTraffic(host, x, x + 1, 1, 1)
-    #     WaitTillEndOfSec(1)
+
+    # POISON RANDOM
+    for p in range(0, 50):
+        for j in range(0, 50):
+            x = random.randint(1, 79)
+            BaseTraffic(host, x, x + 1, 1, 1)
+        WaitTillEndOfSec(1)
 
 
     # # NoNAttack traffic for 25 users for each 2 seconds
@@ -276,7 +277,7 @@ def CreateTopology():
     # BaseTraffic(host, 65, 75, 3, 2)
     # BaseTraffic(host, 75, 80, 4, 2)
 
-    #
+
     # # NoNAttack traffic for 25 users for each 2 seconds
     # x = 1
     # for count in range(0, 25):
@@ -286,18 +287,18 @@ def CreateTopology():
     #     if x >= 54:
     #         x = 1
     #     WaitTillEndOfSec(2)
-    # ------
+    # # ------
 
-    # ------
-    print '#Wave pattern...'
-    thread.start_new_thread(WaveTrafficThread, (host,))
-
-    # POISON RANDOM
-    for p in range(0, 50):
-        for j in range(0, 50):
-            x = random.randint(1, 79)
-            BaseTraffic(host, x, x + 1, 1, 1)
-        WaitTillEndOfSec(1)
+    # # ------
+    # print '#Wave pattern...'
+    # thread.start_new_thread(WaveTrafficThread, (host,))
+    #
+    # # POISON RANDOM
+    # for p in range(0, 50):
+    #     for j in range(0, 50):
+    #         x = random.randint(1, 79)
+    #         BaseTraffic(host, x, x + 1, 1, 1)
+    #     WaitTillEndOfSec(1)
 
     # x = 1
     # for count in range(0, 16):

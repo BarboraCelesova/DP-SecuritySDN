@@ -31,6 +31,9 @@ class SimpleSwitch14(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_4.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
+        # do not delete or comment this print
+        print 'State Time Src_IP'
+
         super(SimpleSwitch14, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
@@ -67,7 +70,6 @@ class SimpleSwitch14(app_manager.RyuApp):
     def _packet_in_handler(self, ev):
         # Returns a datetime object containing the local date and time
         dateTimeObj = datetime.now()
-
         # get the time object from datetime object
         timeObj = dateTimeObj.time()
         timeStr = timeObj.strftime("%H:%M:%S.%f")
@@ -80,6 +82,10 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         pkt = packet.Packet(msg.data)
         src_ip = self.find_src_ip_add(pkt)
+
+        if src_ip is not None:
+            print 'NEW_PACKET_IN', timeStr, src_ip
+
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
@@ -93,7 +99,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         if src_ip is not None:
             self.logger.info("%s -- packet in %s %s %s %s", timeStr, dpid, src, dst, in_port)
-            print timeStr, dpid, src, dst, in_port
+            # print timeStr, dpid, src, dst, in_port
 
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
@@ -116,6 +122,16 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
+
+        # Returns a datetime object containing the local date and time
+        dateTimeObj = datetime.now()
+        # get the time object from datetime object
+        timeObj = dateTimeObj.time()
+        dept_time = timeObj.strftime("%H:%M:%S.%f")
+
+        if src_ip is not None:
+            print 'PASSED', dept_time, src_ip
+
         datapath.send_msg(out)
 
 

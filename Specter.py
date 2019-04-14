@@ -37,8 +37,8 @@ default_confidence_value = 1
 time_slot = 1000
 min_confidence_value = (1,)
 max_confidence_value = (1,)
-number_of_queues = 3
-total_buffers_length = 200
+number_of_queues = 0
+total_buffers_length = 0
 priority_buffer = {}
 beta = 2
 alpha = 0.9
@@ -46,8 +46,8 @@ packet_in_counters_list = {}
 total_count_per_timeslot = 0
 threshold_user = {}
 threshold_malicious_user = 0.1
-max_threshold = 4
-list_of_priority_users = {}
+max_threshold = 5
+service_rate = 0
 
 sem_incoming_packetin_list = threading.Semaphore()
 sem_priority_buffer = threading.Semaphore()
@@ -77,15 +77,13 @@ class SimpleSwitch14(app_manager.RyuApp):
         CONF = cfg.CONF
         CONF.register_opts([
             cfg.IntOpt('NoQueues', default=3),
-            cfg.IntOpt('TotalBuffLength', default=200),
-            cfg.IntOpt('Threshold', default=4),
-            cfg.ListOpt('ListOfPriorityUsers', default=[])
+            cfg.IntOpt('TotalBuffLength', default=10),
+            cfg.IntOpt('Threshold', default=5),
         ])
 
         number_of_queues = CONF.NoQueues
         total_buffers_length = CONF.TotalBuffLength
         max_threshold = CONF.Threshold
-        list_of_priority_users = CONF.ListOfPriorityUsers
 
         sem_priority_buffer.acquire()
         for i in range(1, number_of_queues + 1):
@@ -134,7 +132,6 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         # Returns a datetime object containing the local date and time
         dateTimeObj = datetime.now()
-
         # get the time object from datetime object
         timeObj = dateTimeObj.time()
         timeStr = timeObj.strftime("%H:%M:%S.%f")
@@ -157,25 +154,25 @@ class SimpleSwitch14(app_manager.RyuApp):
         # print timeStr, src_ip, msg.datapath.id, eth.src, eth.dst, msg.match['in_port']
         print 'NEW_PACKET_IN', timeStr, src_ip
 
+        # # process priority users with highest priority
+        # for ip in list_of_priority_users:
+        #     if src_ip is ip:
+        #         self.create_flow(msg)
+
+
         # ----Call Spectre Modules--------
         self.confidence_award(ev)
         # ------------
 
     def create_flow(self, msg):
-        # Returns a datetime object containing the local date and time
-        dateTimeObj = datetime.now()
-        # get the time object from datetime object
-        timeObj = dateTimeObj.time()
-        dept_time = timeObj.strftime("%H:%M:%S.%f")
-
+        global service_rate
 
         datapath = msg.datapath
 
         pkt = packet.Packet(msg.data)
 
         src_ip = self.find_src_ip_add(pkt)
-        if src_ip is not None:
-            print 'PASSED', dept_time, src_ip
+
         eth = pkt.get_protocols(ethernet.ethernet)[0]
 
         ofproto = datapath.ofproto
@@ -210,7 +207,28 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
+
+        # Returns a datetime object containing the local date and time
+        dateTimeObj = datetime.now()
+        # get the time object from datetime object
+        timeObj = dateTimeObj.time()
+        dept_time = timeObj.strftime("%H:%M:%S.%f")
+
+        # # TODO uncomment
+        # if service_rate <= 100:
+        #     service_rate += 1
+        #     if src_ip is not None:
+        #         print 'PASSED', dept_time, src_ip
+        #
+        #     datapath.send_msg(out)
+        # else:
+        #     print 'REJECTED_SERVICE_RATE_EXCEEDED', dept_time, src_ip
+
+        if src_ip is not None:
+            print 'PASSED', dept_time, src_ip
+
         datapath.send_msg(out)
+
 
     def confidence_award(self, ev):
         global confidence_list
@@ -260,15 +278,11 @@ class SimpleSwitch14(app_manager.RyuApp):
             sem_threshold_user.release()
 
         else:
-            # process priority users with highest priority
-            for ip in list_of_priority_users:
-                if src_ip == ip:
-                    self.sorting_to_queues(ev, dt_arrival_time)
             # self.logger.info('!!!!!THRESHOLD USER', threshold_user)
             # if total request from sender in this time slot is more than threshold for him
             if packet_in_counters_list[src_ip] > threshold_user[src_ip]:
                 # give him worse confidence value
-                self.logger.info('REJECTED -- %s, %s, thr %s', src_ip, packet_in_counters_list[src_ip], threshold_user[src_ip])
+                # self.logger.info('REJECTED -- %s, %s, thr %s', src_ip, packet_in_counters_list[src_ip], threshold_user[src_ip])
                 sem_confidence_list.acquire()
                 confidence_list[src_ip] = alpha * confidence_list[src_ip] - 0.1
                 sem_confidence_list.release()
@@ -305,7 +319,7 @@ class SimpleSwitch14(app_manager.RyuApp):
 
         if confidence_list[src_ip] < threshold_malicious_user:
             print 'REJECTED_blacklisted', dt_arrival_time, src_ip
-            self.logger.info('***BLACKLISTED %s, %s, %s ', dt_arrival_time, src_ip, confidence_list[src_ip])
+            # self.logger.info('***BLACKLISTED %s, %s, %s ', dt_arrival_time, src_ip, confidence_list[src_ip])
             datapath = msg.datapath
             ofproto = datapath.ofproto
             parser = datapath.ofproto_parser
@@ -354,12 +368,12 @@ class SimpleSwitch14(app_manager.RyuApp):
         else:
             for i in range(1, index_to_buffer):
                 if len(priority_buffer[i]) > 0:
-                    pkt = packet.Packet(priority_buffer[i].data)
-                    src_ip = self.find_src_ip_add(pkt)
-                    print 'REJECTED_POP', arrival_time, src_ip
+                    print 'REJECTED_POP', arrival_time, '-'
                     priority_buffer[i].pop()
                     priority_buffer[index_to_buffer].append(msg)
-                    break
+                    sem_priority_buffer.release()
+                    return
+            print 'REJECTED_NOT_ENOUGH_SPACE', arrival_time, src_ip
         sem_priority_buffer.release()
 
     def serving_requests(self):
@@ -377,8 +391,9 @@ class SimpleSwitch14(app_manager.RyuApp):
             if actual_total_buffer_length != 0:
                 weight = [0, ]
 
+                # TODO for i in range(0, number_of_queues):
                 # count weights
-                for i in range(1, number_of_queues):
+                for i in range(1, number_of_queues + 1):
                     weight.append(
                         int(round((len(priority_buffer[i]) / max(len(priority_buffer[1]), 1)) * (beta ** (i - 1)))))
 
@@ -386,20 +401,25 @@ class SimpleSwitch14(app_manager.RyuApp):
                     actual_buffer_length.append(len(priority_buffer[i]))
                 sem_priority_buffer.release()
 
-                # serve request from the buffer with the highest priority
-                buffer_length = actual_buffer_length[number_of_queues]
-                if buffer_length != 0:
-                    for j in range(0, buffer_length):
-                        self.create_flow(priority_buffer[number_of_queues].pop(0))
+                # TODO Uncomment
+                # # serve request from the buffer with the highest priority
+                # buffer_length = actual_buffer_length[number_of_queues]
+                # if buffer_length != 0:
+                #     for j in range(0, buffer_length):
+                #         self.create_flow(priority_buffer[number_of_queues].pop(0))
 
+                # TODO number_of_queues - 1
                 # serve stored requests
-                for i in range(number_of_queues - 1, 0, -1):
+                for i in range(number_of_queues, 0, -1):
                     if weight[i] < actual_buffer_length[i]:
+                        self.logger.info('Actual buffer length, weight %s %s', actual_buffer_length[i], weight[i])
                         for j in range(0, weight[i]):
-                            self.create_flow(priority_buffer[i].pop(0))
+                            if actual_buffer_length[i] > 0:
+                                self.create_flow(priority_buffer[i].pop(0))
+                            actual_buffer_length[i] -= 1
                     else:
                         buffer_length = actual_buffer_length[i]
-                        for j in range(0, buffer_length):
+                        for j in range(0, buffer_length - 1):
                             self.create_flow(priority_buffer[i].pop(0))
                 time.sleep(0.00001)
 
@@ -462,12 +482,14 @@ class SimpleSwitch14(app_manager.RyuApp):
         global packet_in_counters_list
         global total_count_per_timeslot
         global confidence_list
+        global service_rate
 
         number_of_slots = 0
         time.sleep(1)
 
         while True:
             start = datetime.now()
+            service_rate = 0
 
             old_packet_in_counters_list = packet_in_counters_list
 
@@ -480,27 +502,28 @@ class SimpleSwitch14(app_manager.RyuApp):
             sem_total_count_per_timeslot.release()
 
             for src_ip in confidence_list:
-                # Sender did not send any packet in this time slot - make his CV better
+                # Sender did not send any packet in this time slot update his CV
                 if src_ip not in old_packet_in_counters_list:
-                    sem_confidence_list.acquire()
-                    confidence_list[src_ip] = alpha * confidence_list[src_ip]
-                    sem_confidence_list.release()
+                    # sem_confidence_list.acquire()
+                    # confidence_list[src_ip] = alpha * confidence_list[src_ip]
+                    # sem_confidence_list.release()
+                    pass
                 # At the end of each time slot update threshold for user
                 else:
                     if (old_packet_in_counters_list[src_ip] <= threshold_user[src_ip]) and (threshold_user[src_ip] < max_threshold):
                         sem_threshold_user.acquire()
                         threshold_user[src_ip] += 1
-                        self.logger.info('++++++++++ THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                        # self.logger.info('++++++++++ THRESHOLD %s %s', src_ip, threshold_user[src_ip])
                         sem_threshold_user.release()
                     elif old_packet_in_counters_list[src_ip] > threshold_user[src_ip] > 0:
                         sem_threshold_user.acquire()
                         threshold_user[src_ip] -= 1
-                        self.logger.info('---------- THRESHOLD %s %s', src_ip, threshold_user[src_ip])
+                        # self.logger.info('---------- THRESHOLD %s %s', src_ip, threshold_user[src_ip])
                         sem_threshold_user.release()
 
             last = datetime.now()
             cakaj = last - start
             seconds = cakaj.total_seconds()
-            self.logger.info('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ WORKER PRACOVAL %s', str(seconds))
+            # self.logger.info('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ WORKER PRACOVAL %s', str(seconds))
             if (1 - seconds) > 0:
                 time.sleep(1 - seconds)
