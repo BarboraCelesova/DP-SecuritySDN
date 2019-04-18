@@ -186,28 +186,28 @@ def CreateTopology():
     time.sleep(sleeptime)
     #
 
-    # # # # ------
-    print '#Growing pattern...'
+    # # # # # ------
+    # print '#Growing pattern...'
     # thread.start_new_thread(GrowingTrafficThread, (host,))
-
-    # POISON RANDOM
-    for p in range(0, 50):
-        for j in range(0, 50):
-            x = random.randint(1, 79)
-            BaseTraffic(host, x, x + 1, 1, 1)
-        WaitTillEndOfSec(1)
-
-
-    # # NoNAttack traffic for 25 users for each 2 seconds
-    # x = 1
-    # for count in range(0, 25):
-    #     BaseTraffic(host, x, x + 25, 2, 2)
-    #     x += 25
     #
-    #     if x >= 54:
-    #         x = 1
-    #     WaitTillEndOfSec(2)
-    # # ------
+    # # POISON RANDOM
+    # for p in range(0, 50):
+    #     for j in range(0, 50):
+    #         x = random.randint(1, 79)
+    #         BaseTraffic(host, x, x + 1, 1, 1)
+    #     WaitTillEndOfSec(1)
+
+
+    # NoNAttack traffic for 25 users for each 2 seconds
+    x = 1
+    for count in range(0, 25):
+        BaseTraffic(host, x, x + 25, 2, 2)
+        x += 25
+
+        if x >= 54:
+            x = 1
+        WaitTillEndOfSec(2)
+    # ------
 
     #  NoNAttack traffic 10 and 5 users for each 5 seconds
     # x = 1

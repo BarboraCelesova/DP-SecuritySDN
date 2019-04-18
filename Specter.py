@@ -391,9 +391,8 @@ class SimpleSwitch14(app_manager.RyuApp):
             if actual_total_buffer_length != 0:
                 weight = [0, ]
 
-                # TODO for i in range(0, number_of_queues):
                 # count weights
-                for i in range(1, number_of_queues + 1):
+                for i in range(1, number_of_queues):
                     weight.append(
                         int(round((len(priority_buffer[i]) / max(len(priority_buffer[1]), 1)) * (beta ** (i - 1)))))
 
@@ -401,16 +400,14 @@ class SimpleSwitch14(app_manager.RyuApp):
                     actual_buffer_length.append(len(priority_buffer[i]))
                 sem_priority_buffer.release()
 
-                # TODO Uncomment
-                # # serve request from the buffer with the highest priority
-                # buffer_length = actual_buffer_length[number_of_queues]
-                # if buffer_length != 0:
-                #     for j in range(0, buffer_length):
-                #         self.create_flow(priority_buffer[number_of_queues].pop(0))
+                # serve request from the buffer with the highest priority
+                buffer_length = actual_buffer_length[number_of_queues]
+                if buffer_length != 0:
+                    for j in range(0, buffer_length):
+                        self.create_flow(priority_buffer[number_of_queues].pop(0))
 
-                # TODO number_of_queues - 1
                 # serve stored requests
-                for i in range(number_of_queues, 0, -1):
+                for i in range(number_of_queues - 1, 0, -1):
                     if weight[i] < actual_buffer_length[i]:
                         self.logger.info('Actual buffer length, weight %s %s', actual_buffer_length[i], weight[i])
                         for j in range(0, weight[i]):
